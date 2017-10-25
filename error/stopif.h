@@ -23,13 +23,6 @@
 #include <stdio.h>
 
 /**
- * stopif_set_error_log() - Set the error log file to be printed to upon
- * program halt.
- * @error_log: Log file.
- */
-void stopif_set_error_log(FILE *error_log);
-
-/**
  * stopif() - Stops the program and prints `msg_format_str` if `assertion` is
  * true, else does nothing.
  * @assertion: Statement that must be true, otherwise the program stops.
@@ -37,5 +30,12 @@ void stopif_set_error_log(FILE *error_log);
  * triggered.
  */
 void stopif(bool assertion, char *msg_format_str, ...);
+
+/**
+ * stopif_set_error_log() - Set the error log file to be printed to upon
+ * program halt.
+ * @error_log: Log file.
+ */
+void stopif_set_error_log(FILE *error_log);
 
 #endif /* _STOPIF_H_ */
