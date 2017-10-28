@@ -16,8 +16,8 @@
  * You should have received a copy of the GNU General Public License along with
  * ROT ML Library. If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef _MIN_UNIT_H_
-#define _MIN_UNIT_H_
+#ifndef MIN_UNIT_H
+#define MIN_UNIT_H
 
 #include <stdarg.h>
 #include <stdbool.h>
@@ -43,4 +43,4 @@ void min_unit_assert(bool did_test_pass, char *msg_format_str, ...);
  */
 void min_unit_run_test(min_unit_test_func *test_fn);
 
-#endif /* _MIN_UNIT_H_ */
+#endif /* MIN_UNIT_H */
