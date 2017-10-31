@@ -1,6 +1,17 @@
 # reimagined-octo-tribble machine learning library
 
 
+## Building
+
+[Meson](https://github.com/mesonbuild/meson) and
+[Ninja](https://github.com/ninja-build/ninja) are dependencies for the build.
+
+```
+meson build && cd build
+ninja && ninja test
+```
+
+
 ## Project goals
 
 1. Run as fast as possible in terms of both optimizing computation speed and
