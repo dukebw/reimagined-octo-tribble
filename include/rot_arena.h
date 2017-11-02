@@ -24,6 +24,16 @@
 typedef struct rot_arena *rot_arena_t;
 
 /**
+ * ROT_arena_malloc() - Allocate memory from arena.
+ * @arena: Memory arena to allocate memory from.
+ * @malloc_bytes: Number of bytes to allocate.
+ *
+ * NULL is returned on error, e.g. if there is not enough memory in `arena` to
+ * allocate `malloc_bytes`.
+ */
+void *ROT_arena_malloc(rot_arena_t arena, size_t malloc_bytes);
+
+/**
  * ROT_arena_min_bytes() - Returns the minimum number of bytes in an arena.
  */
 size_t ROT_arena_min_bytes(void);

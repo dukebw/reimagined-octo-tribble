@@ -27,6 +27,21 @@ struct rot_arena {
         size_t used_bytes;
 };
 
+void *ROT_arena_malloc(rot_arena_t arena, size_t malloc_bytes)
+{
+        if (arena == NULL)
+                return NULL;
+
+        if (malloc_bytes > (arena->mem_bytes - arena->used_bytes))
+                return NULL;
+
+        void *result = (char *)arena + arena->used_bytes;
+
+        arena->used_bytes += malloc_bytes;
+
+        return result;
+}
+
 size_t ROT_arena_min_bytes(void)
 {
         return ROT_ARENA_MIN_BYTES;
