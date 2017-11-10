@@ -19,7 +19,23 @@
 #ifndef ROT_MATH_H
 #define ROT_MATH_H
 
+#include "rot_arena.h"
+#include <stdint.h>
+
 typedef struct rot_tensor *rot_tensor_t;
+
+/**
+ * ROT_create_tensor() - Allocates and initializes a tensor with `num_dims`
+ * dimensions given by `dims`.
+ * @arena: Memory arena to allocate tensor from.
+ * @num_dims: Number of dimensions of the tensor to allocate.
+ * @dims: Size of each dimension of the allocated tensor.
+ *
+ * Returns NULL on error.
+ */
+rot_tensor_t ROT_create_tensor(rot_arena_t arena,
+                               uint32_t num_dims,
+                               size_t *dims);
 
 /**
  * ROT_matmul()
@@ -34,7 +50,16 @@ typedef struct rot_tensor *rot_tensor_t;
  * Output:
  * For input tensors of dimension mxn and m'xn', the output tensor is a single
  * tensor of mxn'.
+ *
+ * If any input requirements are not satisfied, a and b are not touched and
+ * NULL is returned.
  */
-rot_tensor_t ROT_matmul(rot_tensor_t a, rot_tensor_t b);
+rot_tensor_t ROT_matmul(rot_arena_t arena, rot_tensor_t a, rot_tensor_t b);
+
+/**
+ * ROT_tensor_get_data() - Returns a pointer to the float data in tensor `a`.
+ * @tensor: A tensor.
+ */
+float *ROT_tensor_get_data(rot_tensor_t tensor);
 
 #endif /* ROT_MATH_H */
