@@ -27,12 +27,17 @@ struct rot_arena {
         size_t used_bytes;
 };
 
+bool ROT_arena_can_alloc(rot_arena_t arena, size_t request_bytes)
+{
+        return request_bytes <= (arena->mem_bytes - arena->used_bytes);
+}
+
 void *ROT_arena_malloc(rot_arena_t arena, size_t malloc_bytes)
 {
         if (arena == NULL)
                 return NULL;
 
-        if (malloc_bytes > (arena->mem_bytes - arena->used_bytes))
+        if (!ROT_arena_can_alloc(arena, malloc_bytes))
                 return NULL;
 
         void *result = (char *)arena + arena->used_bytes;
