@@ -16,24 +16,31 @@
  * You should have received a copy of the GNU General Public License along with
  * ROT ML Library. If not, see <http://www.gnu.org/licenses/>.
  */
-#include "stopif.h"
+#include "min_unit.h"
+#include "error/stopif.h"
+#include <stdarg.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 static uint32_t min_unit_num_tests_run;
 
 void min_unit_assert(bool did_test_pass, char *msg_format_str, ...)
 {
+        va_list args;
+
         if (!did_test_pass) {
-                va_list args;
                 va_start(args, msg_format_str);
 
                 vprintf(msg_format_str, args);
                 fprintf(stderr,
-                        "Test failed!\nTests run: %d\n",
+                        "Test failed!\nTests run: %u\n",
                         min_unit_num_tests_run);
                 abort();
 
-                va_end(args);
         }
+
+        va_end(args);
 }
 
 void min_unit_run_test(min_unit_test_func *test_fn)
