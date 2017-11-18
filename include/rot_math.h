@@ -54,7 +54,7 @@ rot_tensor_t ROT_create_tensor(rot_arena_t arena,
  * If any input requirements are not satisfied, a and b are not touched and
  * NULL is returned.
  */
-rot_tensor_t ROT_matmul(rot_arena_t arena, rot_tensor_t a, rot_tensor_t b);
+rot_tensor_t ROT_matmul(rot_tensor_t result, rot_tensor_t a, rot_tensor_t b);
 
 /**
  * ROT_tensor_get_data() - Returns a pointer to the float data in tensor `a`.

@@ -89,9 +89,9 @@ rot_tensor_t ROT_create_tensor(rot_arena_t arena,
         return result;
 }
 
-rot_tensor_t ROT_matmul(rot_arena_t arena, rot_tensor_t a, rot_tensor_t b)
+rot_tensor_t ROT_matmul(rot_tensor_t result, rot_tensor_t a, rot_tensor_t b)
 {
-        if ((a == NULL) || (b == NULL))
+        if ((result == NULL) || (a == NULL) || (b == NULL))
             return NULL;
 
         return NULL;
