@@ -30,7 +30,7 @@ typedef struct rot_arena *rot_arena_t;
  * @arena: Memory arena to request bytes from.
  * @request_bytes: Number of bytes requested.
  */
-bool ROT_arena_can_alloc(rot_arena_t arena, size_t request_bytes);
+bool ROT_arena_can_alloc(const rot_arena_t arena, size_t request_bytes);
 
 /**
  * ROT_arena_malloc() - Allocate memory from arena.

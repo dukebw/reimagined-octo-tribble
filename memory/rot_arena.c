@@ -18,6 +18,8 @@
  */
 
 #include "rot_arena.h"
+#include "error/log_error.h"
+
 #include <stdint.h>
 
 #define ROT_ARENA_MIN_BYTES (sizeof(struct rot_arena) + 8)
@@ -27,18 +29,22 @@ struct rot_arena {
         size_t used_bytes;
 };
 
-bool ROT_arena_can_alloc(rot_arena_t arena, size_t request_bytes)
+bool ROT_arena_can_alloc(const rot_arena_t arena, size_t request_bytes)
 {
         return request_bytes <= (arena->mem_bytes - arena->used_bytes);
 }
 
 void *ROT_arena_malloc(rot_arena_t arena, size_t malloc_bytes)
 {
-        if (arena == NULL)
+        if (arena == NULL) {
+                LOG_NULL();
                 return NULL;
+        }
 
-        if (!ROT_arena_can_alloc(arena, malloc_bytes))
+        if (!ROT_arena_can_alloc(arena, malloc_bytes)) {
+                LOG_ERROR("Not enough space in arena to malloc.");
                 return NULL;
+        }
 
         void *result = (char *)arena + arena->used_bytes;
 
@@ -54,11 +60,16 @@ size_t ROT_arena_min_bytes(void)
 
 rot_arena_t ROT_arena_new(void *memory, size_t mem_bytes)
 {
-        if (memory == NULL)
+        if (memory == NULL) {
+                LOG_NULL();
                 return NULL;
+        }
 
-        if (mem_bytes < ROT_ARENA_MIN_BYTES)
+        if (mem_bytes < ROT_ARENA_MIN_BYTES) {
+                LOG_ERROR("Provided memory size is less than minimal arena "
+                          "size.");
                 return NULL;
+        }
 
         struct rot_arena *arena = memory;
         arena->mem_bytes = mem_bytes;
