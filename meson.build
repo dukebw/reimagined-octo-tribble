@@ -10,6 +10,7 @@ test_math = executable('test_math',
                        'tests/test_math.c',
                        'tests/min_unit.c',
                        'error/stopif.c',
+                       'error/log_error.c',
                        link_with : lib,
                        dependencies : [gsl_dep, torch_dep])
 
