@@ -35,26 +35,36 @@ typedef struct rot_tensor *rot_tensor_t;
  */
 rot_tensor_t ROT_create_tensor(rot_arena_t arena,
                                uint32_t num_dims,
-                               size_t *dims);
+                               const size_t *dims);
 
 /**
  * ROT_matmul()
  *
  * Requirements
  *
+ *
  * Inputs:
+ *
  * Two tensors of dimension == 2.
+ *
  * The inner dimension (number of columns) of the first argument must match the
  * outer dimension (number of rows) of the second argument.
  *
+ * The memory of the result should not overlap with the memory of either of the
+ * inputs.
+ *
+ *
  * Output:
+ *
  * For input tensors of dimension mxn and m'xn', the output tensor is a single
  * tensor of mxn'.
  *
  * If any input requirements are not satisfied, a and b are not touched and
  * NULL is returned.
  */
-rot_tensor_t ROT_matmul(rot_tensor_t result, rot_tensor_t a, rot_tensor_t b);
+rot_tensor_t ROT_matmul(rot_tensor_t result,
+                        const rot_tensor_t a,
+                        const rot_tensor_t b);
 
 /**
  * ROT_tensor_get_data() - Returns a pointer to the float data in tensor `a`.

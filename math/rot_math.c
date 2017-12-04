@@ -17,6 +17,9 @@
  * ROT ML Library. If not, see <http://www.gnu.org/licenses/>.
  */
 #include "rot_math.h"
+#include "error/log_error.h"
+
+#include "cblas.h"
 #include <stdlib.h>
 
 /**
@@ -44,15 +47,20 @@ struct rot_tensor {
 
 rot_tensor_t ROT_create_tensor(rot_arena_t arena,
                                uint32_t num_dims,
-                               size_t *dims)
+                               const size_t *dims)
 {
-        if ((dims == NULL) || (arena == NULL))
+        if ((dims == NULL) || (arena == NULL)) {
+                LOG_NULL();
                 return NULL;
+        }
 
-        if (num_dims == 0)
+        if (num_dims == 0) {
+                LOG_ERROR("Tensors must have a non-zero number of "
+                          "dimensions.");
                 return NULL;
+        }
 
-        size_t required_bytes = dims[0];
+        size_t required_bytes = dims[0]*sizeof(float);
         for (uint32_t dim = 1;
              dim < num_dims;
              ++dim) {
@@ -72,8 +80,10 @@ rot_tensor_t ROT_create_tensor(rot_arena_t arena,
         size_t dim_sizes_bytes = sizeof(size_t)*num_dims;
         required_bytes += dim_sizes_bytes;
 
-        if (!ROT_arena_can_alloc(arena, required_bytes))
+        if (!ROT_arena_can_alloc(arena, required_bytes)) {
+                LOG_ERROR("Not enough space to allocate tensor.");
                 return NULL;
+        }
 
         struct rot_tensor *result = ROT_arena_malloc(arena, required_bytes);
         result->num_dims = num_dims;
@@ -89,12 +99,48 @@ rot_tensor_t ROT_create_tensor(rot_arena_t arena,
         return result;
 }
 
-rot_tensor_t ROT_matmul(rot_tensor_t result, rot_tensor_t a, rot_tensor_t b)
+rot_tensor_t ROT_matmul(rot_tensor_t result,
+                        const rot_tensor_t a,
+                        const rot_tensor_t b)
 {
-        if ((result == NULL) || (a == NULL) || (b == NULL))
-            return NULL;
+        if ((result == NULL) || (a == NULL) || (b == NULL)) {
+                LOG_ERROR("Null input.");
+                return NULL;
+        }
 
-        return NULL;
+        if ((a->num_dims != 2) || (b->num_dims != 2)) {
+                LOG_ERROR("Matrix dimensions must be 2.");
+                return NULL;
+        }
+
+        if (a->dims[1] != b->dims[0]) {
+                LOG_ERROR("Matrix dimensions incompatible for "
+                          "multiplication.");
+                return NULL;
+        }
+
+        if ((result == a) || (result == b)) {
+                LOG_ERROR("Result tensor of matmul must be different from "
+                          "either operand tensor.");
+                return NULL;
+        }
+
+        cblas_sgemm(CblasRowMajor,
+                    CblasNoTrans,
+                    CblasNoTrans,
+                    a->dims[0],
+                    b->dims[1],
+                    a->dims[1],
+                    1.0f,
+                    a->data,
+                    a->dims[1],
+                    b->data,
+                    b->dims[1],
+                    0.0f,
+                    result->data,
+                    b->dims[1]);
+
+        return result;
 }
 
 float *ROT_tensor_get_data(rot_tensor_t tensor)
