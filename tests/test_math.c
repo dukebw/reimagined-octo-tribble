@@ -246,6 +246,57 @@ rand_dim(uint32_t max_dim)
 }
 
 /**
+ * test_matmul_small() - Simple test for correctness for small matrix
+ * multiplication.
+ *
+ * Pass criteria: the result of multiplying two randomly initialized matrices,
+ * of random (small and valid) dimensions, must match a reference
+ * implementation to within the floating point precision of the system.
+ */
+static MIN_UNIT_TEST_FUNC(test_matmul_small)
+{
+        uint8_t memory[512*1024];
+        struct matmul_dims dims = {.n = rand_dim(128),
+                                   .m = rand_dim(128),
+                                   .k = rand_dim(128)};
+
+        struct matmul_test_state state;
+        setup_matmul_test_state(&state, memory, sizeof(memory), &dims);
+
+        /* TODO(brendan): Error: matrices expected, got 2D, 1D tensors */
+        THFloatTensor_addmm(state.th_c,
+                            0.0,
+                            state.th_c,
+                            1.0,
+                            state.th_a,
+                            state.th_b);
+
+        state.c.tensor = ROT_matmul(state.c.tensor,
+                                    state.a.tensor,
+                                    state.b.tensor);
+        min_unit_assert(state.c.tensor != NULL,
+                        "NULL returned from ROT_matmul, expected "
+                        "rot_tensor\n");
+
+        for (uint32_t i = 0;
+             i < dims.n*dims.k;
+             ++i) {
+                float diff = state.th_c->storage->data[i] - state.c.data[i];
+                min_unit_assert(fabs(diff) < FLT_EPSILON,
+                                "ROT_matmul mismatches TH_addmm at index %d\n",
+                                i);
+        }
+
+        THFloatTensor_free(state.th_a);
+        THFloatTensor_free(state.th_b);
+        THFloatTensor_free(state.th_c);
+}
+
+static MIN_UNIT_TEST_FUNC(test_matmul_small_cudnn)
+{
+}
+
+/**
  * test_matmul_small_perf() - Test for speed for small matrix multiplication.
  *
  * Pass criteria: the ROT_matmul() implementation should be faster than
@@ -305,53 +356,6 @@ static MIN_UNIT_TEST_FUNC(test_matmul_small_perf)
 }
 
 /**
- * test_matmul_small() - Simple test for correctness for small matrix
- * multiplication.
- *
- * Pass criteria: the result of multiplying two randomly initialized matrices,
- * of random (small and valid) dimensions, must match a reference
- * implementation to within the floating point precision of the system.
- */
-static MIN_UNIT_TEST_FUNC(test_matmul_small)
-{
-        uint8_t memory[512*1024];
-        struct matmul_dims dims = {.n = rand_dim(128),
-                                   .m = rand_dim(128),
-                                   .k = rand_dim(128)};
-
-        struct matmul_test_state state;
-        setup_matmul_test_state(&state, memory, sizeof(memory), &dims);
-
-        /* TODO(brendan): Error: matrices expected, got 2D, 1D tensors */
-        THFloatTensor_addmm(state.th_c,
-                            0.0,
-                            state.th_c,
-                            1.0,
-                            state.th_a,
-                            state.th_b);
-
-        state.c.tensor = ROT_matmul(state.c.tensor,
-                                    state.a.tensor,
-                                    state.b.tensor);
-        min_unit_assert(state.c.tensor != NULL,
-                        "NULL returned from ROT_matmul, expected "
-                        "rot_tensor\n");
-
-        for (uint32_t i = 0;
-             i < dims.n*dims.k;
-             ++i) {
-                float diff = state.th_c->storage->data[i] - state.c.data[i];
-                min_unit_assert(fabs(diff) < FLT_EPSILON,
-                                "ROT_matmul mismatches TH_addmm at index %d\n",
-                                i);
-        }
-
-        THFloatTensor_free(state.th_a);
-        THFloatTensor_free(state.th_b);
-        THFloatTensor_free(state.th_c);
-}
-
-/**
  * run_test() - Sets up, runs and tears down the unit test function `test`.
  */
 static void
@@ -364,6 +368,7 @@ run_test(min_unit_test_func test)
 int main(void)
 {
         run_test(test_matmul_small);
+        run_test(test_matmul_small_cudnn);
         run_test(test_matmul_small_perf);
 
         printf("All tests passed!\n");
