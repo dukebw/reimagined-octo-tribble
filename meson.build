@@ -2,7 +2,7 @@ project('rot-ml-library', 'c')
 
 gsl_dep = dependency('gsl')
 openblas_dep = dependency('openblas')
-torch_dep = dependency('TH')
+torch_dep = dependency('ATen')
 
 lib = static_library('rot_ml', 'math/rot_math.c', 'memory/rot_arena.c')
 
