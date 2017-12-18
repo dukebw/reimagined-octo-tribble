@@ -16,8 +16,8 @@
  * You should have received a copy of the GNU General Public License along with
  * ROT ML Library. If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef STOPIF_H
-#define STOPIF_H
+#ifndef ERROR_STOPIF_H
+#define ERROR_STOPIF_H
 
 #include <stdbool.h>
 #include <stdio.h>
@@ -38,4 +38,4 @@ void stopif(bool assertion, char *msg_format_str, ...);
  */
 void stopif_set_error_log(FILE *error_log);
 
-#endif /* STOPIF_H */
+#endif /* ERROR_STOPIF_H */

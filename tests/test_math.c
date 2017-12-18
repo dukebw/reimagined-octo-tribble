@@ -274,7 +274,7 @@ static MIN_UNIT_TEST_FUNC(test_matmul_small)
         state.c.tensor = ROT_matmul(state.c.tensor,
                                     state.a.tensor,
                                     state.b.tensor);
-        min_unit_assert(state.c.tensor != NULL,
+        MIN_UNIT_ASSERT(state.c.tensor != NULL,
                         "NULL returned from ROT_matmul, expected "
                         "rot_tensor\n");
 
@@ -282,7 +282,17 @@ static MIN_UNIT_TEST_FUNC(test_matmul_small)
              i < dims.n*dims.k;
              ++i) {
                 float diff = state.th_c->storage->data[i] - state.c.data[i];
-                min_unit_assert(fabs(diff) < FLT_EPSILON,
+                /**
+                 * TODO(brendan): A couple of issues, both having to do with
+                 * the cblas installed, even after installing OpenBLAS from
+                 * source.
+                 *
+                 * 1. Accuracy of result is off.
+                 * 2. Performance is 10x too slow.
+                 *
+                 * Rectify both by compiling openBLAS on the system?
+                 */
+                MIN_UNIT_ASSERT(fabs(diff) < FLT_EPSILON,
                                 "ROT_matmul mismatches TH_addmm at index %d\n",
                                 i);
         }
@@ -293,6 +303,10 @@ static MIN_UNIT_TEST_FUNC(test_matmul_small)
 }
 
 static MIN_UNIT_TEST_FUNC(test_matmul_small_cudnn)
+{
+}
+
+static MIN_UNIT_TEST_FUNC(test_matmul_small_miopen)
 {
 }
 
@@ -340,7 +354,7 @@ static MIN_UNIT_TEST_FUNC(test_matmul_small_perf)
                 state.c.tensor = ROT_matmul(state.c.tensor,
                                             state.a.tensor,
                                             state.b.tensor);
-                min_unit_assert(state.c.tensor != NULL,
+                MIN_UNIT_ASSERT(state.c.tensor != NULL,
                                 "NULL returned from ROT_matmul, expected "
                                 "rot_tensor\n");
         }
@@ -349,7 +363,7 @@ static MIN_UNIT_TEST_FUNC(test_matmul_small_perf)
 
         double rot_elapsed_sec = get_elapsed_sec(start, end);
 
-        min_unit_assert(rot_elapsed_sec < th_elapsed_sec,
+        MIN_UNIT_ASSERT(rot_elapsed_sec < th_elapsed_sec,
                         "ROT performance (%.5f) below that of TH (%.5f)\n",
                         rot_elapsed_sec,
                         th_elapsed_sec);
@@ -369,6 +383,7 @@ int main(void)
 {
         run_test(test_matmul_small);
         run_test(test_matmul_small_cudnn);
+        run_test(test_matmul_small_miopen);
         run_test(test_matmul_small_perf);
 
         printf("All tests passed!\n");

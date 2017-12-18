@@ -16,21 +16,33 @@
  * You should have received a copy of the GNU General Public License along with
  * ROT ML Library. If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef MIN_UNIT_H
-#define MIN_UNIT_H
+#ifndef TEST_MIN_UNIT_H
+#define TEST_MIN_UNIT_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #define MIN_UNIT_TEST_FUNC(name) void name(void)
 typedef MIN_UNIT_TEST_FUNC(min_unit_test_func);
+
+#define MIN_UNIT_ASSERT(b, s, ...)  \
+        min_unit_assert(b, __func__, __FILE__, __LINE__, s, ##__VA_ARGS__)
 
 /**
  * min_unit_assert() - Asserts that a given test passed, printing the number of
  * tests run and an error message upon failure.
  * @did_test_pass: Did the test pass?
  * @msg_format_str: Format string to be printed on error.
+ *
+ * This function should not be called directly. Test asserts should go through
+ * `MIN_UNIT_ASSERT`.
  */
-void min_unit_assert(bool did_test_pass, char *msg_format_str, ...);
+void min_unit_assert(bool did_test_pass,
+                     const char *func_name,
+                     const char *filename,
+                     int32_t line_number,
+                     char *msg_format_str,
+                     ...);
 
 /**
  * min_unit_run_test() - Runs `test_fn` and keeps track of the total number of
@@ -39,4 +51,4 @@ void min_unit_assert(bool did_test_pass, char *msg_format_str, ...);
  */
 void min_unit_run_test(min_unit_test_func *test_fn);
 
-#endif /* MIN_UNIT_H */
+#endif /* TEST_MIN_UNIT_H */

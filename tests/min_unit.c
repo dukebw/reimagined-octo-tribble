@@ -17,24 +17,31 @@
  * ROT ML Library. If not, see <http://www.gnu.org/licenses/>.
  */
 #include "min_unit.h"
+#include "error/log_error.h"
 #include "error/stopif.h"
 #include <stdarg.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 static uint32_t min_unit_num_tests_run;
 
-void min_unit_assert(bool did_test_pass, char *msg_format_str, ...)
+void min_unit_assert(bool did_test_pass,
+                     const char *func_name,
+                     const char *filename,
+                     int32_t line_number,
+                     char *msg_format_str,
+                     ...)
 {
         va_list args;
+        char buffer[64];
 
         if (!did_test_pass) {
                 va_start(args, msg_format_str);
 
-                vprintf(msg_format_str, args);
+                vsnprintf(buffer, sizeof(buffer), msg_format_str, args);
+                log_error(buffer, func_name, filename, line_number);
                 fprintf(stderr,
-                        "Test failed!\nTests run: %u\n",
+                        "Tests run: %u\n",
                         min_unit_num_tests_run);
                 abort();
 

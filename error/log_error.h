@@ -16,8 +16,8 @@
  * You should have received a copy of the GNU General Public License along with
  * ROT ML Library. If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef LOG_ERROR_H
-#define LOG_ERROR_H
+#ifndef ERROR_LOG_ERROR_H
+#define ERROR_LOG_ERROR_H
 
 #include <stdint.h>
 
@@ -37,4 +37,4 @@ void log_error(const char *message,
                const char *filename,
                int32_t line_number);
 
-#endif // LOG_ERROR_H
+#endif // ERROR_LOG_ERROR_H
