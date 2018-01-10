@@ -282,16 +282,6 @@ static MIN_UNIT_TEST_FUNC(test_matmul_small)
              i < dims.n*dims.k;
              ++i) {
                 float diff = state.th_c->storage->data[i] - state.c.data[i];
-                /**
-                 * TODO(brendan): A couple of issues, both having to do with
-                 * the cblas installed, even after installing OpenBLAS from
-                 * source.
-                 *
-                 * 1. Accuracy of result is off.
-                 * 2. Performance is 10x too slow.
-                 *
-                 * Rectify both by compiling openBLAS on the system?
-                 */
                 MIN_UNIT_ASSERT(fabs(diff) < FLT_EPSILON,
                                 "ROT_matmul mismatches TH_addmm at index %d\n",
                                 i);

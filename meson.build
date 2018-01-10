@@ -12,6 +12,6 @@ test_math = executable('test_math',
                        'error/stopif.c',
                        'error/log_error.c',
                        link_with : lib,
-                       dependencies : [gsl_dep, torch_dep])
+                       dependencies : [openblas_dep, gsl_dep, torch_dep])
 
 test('Test rot_math.', test_math)
