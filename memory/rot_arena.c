@@ -71,7 +71,7 @@ rot_arena_t ROT_arena_new(void *memory, size_t mem_bytes)
                 return NULL;
         }
 
-        struct rot_arena *arena = memory;
+        struct rot_arena *arena = (struct rot_arena *)memory;
         arena->mem_bytes = mem_bytes;
         arena->used_bytes = sizeof(struct rot_arena);
 

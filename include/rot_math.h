@@ -72,4 +72,11 @@ rot_tensor_t ROT_matmul(rot_tensor_t result,
  */
 float *ROT_tensor_get_data(rot_tensor_t tensor);
 
+/**
+ * ROT_tensor_get_size() - Returns the size in bytes of the data pointed to by
+ * `tensor.data`.
+ * @tensor: A tensor.
+ */
+size_t ROT_tensor_get_size(rot_tensor_t tensor);
+
 #endif /* ROT_MATH_H */

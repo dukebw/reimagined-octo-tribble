@@ -18,6 +18,11 @@
  */
 #include "rot_math.h"
 #include "error/log_error.h"
+/**
+ * TODO(brendan): Primitive math routines that should run on platform-specific
+ * devices, e.g. AMD GPUs, should be picked out of platform.math.
+ */
+#include "platform/math.h"
 
 #include "cblas.h"
 #include <stdlib.h>
@@ -85,7 +90,8 @@ rot_tensor_t ROT_create_tensor(rot_arena_t arena,
                 return NULL;
         }
 
-        struct rot_tensor *result = ROT_arena_malloc(arena, required_bytes);
+        struct rot_tensor *result =
+                (struct rot_tensor *)ROT_arena_malloc(arena, required_bytes);
         result->num_dims = num_dims;
         result->dims = (size_t *)((char *)result +
                                   (required_bytes - dim_sizes_bytes));
@@ -146,4 +152,19 @@ rot_tensor_t ROT_matmul(rot_tensor_t result,
 float *ROT_tensor_get_data(rot_tensor_t tensor)
 {
         return tensor->data;
+}
+
+size_t ROT_tensor_get_size(rot_tensor_t tensor)
+{
+        if (tensor->num_dims == 0)
+                return 0;
+
+        size_t size = sizeof(float);
+        for (uint32_t i = 0;
+             i < tensor->num_dims;
+             ++i) {
+                size *= tensor->dims[i];
+        }
+
+        return size;
 }
