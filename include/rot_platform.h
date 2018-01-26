@@ -16,7 +16,13 @@
  * You should have received a copy of the GNU General Public License along with
  * ROT ML Library. If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef PLATFORM_MATH_H
-#define PLATFORM_MATH_H
+#ifndef ROT_PLATFORM_H
+#define ROT_PLATFORM_H
 
-#endif /* PLATFORM_MATH_H */
+enum rot_backend {
+        ROT_BACKEND_CPU = 0,
+        ROT_BACKEND_ROC = 1,
+        ROT_BACKEND_CUDA = 2,
+};
+
+#endif // ROT_PLATFORM_H
