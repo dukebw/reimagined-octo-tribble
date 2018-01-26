@@ -18,14 +18,22 @@
  */
 #include "rot_math.h"
 #include "error/log_error.h"
-/**
- * TODO(brendan): Primitive math routines that should run on platform-specific
- * devices, e.g. AMD GPUs, should be picked out of platform.math.
- */
 #include "platform/math.h"
 
 #include "cblas.h"
 #include <stdlib.h>
+
+struct rot_cpu_tensor {
+        /**
+         * NOTE(brendan): Use of the flexible array member here is to allow
+         * variable length tensors to be allocated.
+         */
+        float data[];
+};
+
+struct rot_roc_tensor {
+        void *data;
+};
 
 /**
  * rot_tensor: Container for tensor data.
@@ -43,16 +51,16 @@
 struct rot_tensor {
         uint32_t num_dims;
         size_t *dims;
-        /**
-         * NOTE(brendan): Use of the flexible array member here is to allow
-         * variable length tensors to be allocated.
-         */
-        float data[];
+        union {
+                struct rot_cpu_tensor cpu;
+                struct rot_roc_tensor roc;
+        };
 };
 
 rot_tensor_t ROT_create_tensor(rot_arena_t arena,
                                uint32_t num_dims,
-                               const size_t *dims)
+                               const size_t *dims,
+                               enum rot_math_type type);
 {
         if ((dims == NULL) || (arena == NULL)) {
                 LOG_NULL();
@@ -138,12 +146,12 @@ rot_tensor_t ROT_matmul(rot_tensor_t result,
                     b->dims[1],
                     a->dims[1],
                     1.0f,
-                    a->data,
+                    a->cpu.data,
                     a->dims[1],
-                    b->data,
+                    b->cpu.data,
                     b->dims[1],
                     0.0f,
-                    result->data,
+                    result->cpu.data,
                     b->dims[1]);
 
         return result;
@@ -151,7 +159,7 @@ rot_tensor_t ROT_matmul(rot_tensor_t result,
 
 float *ROT_tensor_get_data(rot_tensor_t tensor)
 {
-        return tensor->data;
+        return tensor->cpu.data;
 }
 
 size_t ROT_tensor_get_size(rot_tensor_t tensor)

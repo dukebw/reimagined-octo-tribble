@@ -19,7 +19,9 @@
 #ifndef ROT_ARENA_H
 #define ROT_ARENA_H
 
+#include "rot_platform.h"
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdlib.h>
 
 typedef struct rot_arena *rot_arena_t;
@@ -50,10 +52,11 @@ size_t ROT_arena_min_bytes(void);
 /**
  * ROT_arena_new() - Initializes a memory arena from memory allocated by the
  * caller.
- * @memory: Non-NULL pointer to an allocated contiguous buffer of mem_bytes
- * many bytes.
+ * @memory: Non-NULL pointer to an array of allocated contiguous buffer of
+ * mem_bytes many bytes.
  * @mem_bytes: Size of memory in bytes.
+ * @backend: Hardware backend for which the new memory arena will be allocated.
  */
-rot_arena_t ROT_arena_new(void *memory, size_t mem_bytes);
+rot_arena_t ROT_arena_new(void *memory, size_t mem_bytes, rot_backend backend);
 
 #endif /* ROT_ARENA_H */

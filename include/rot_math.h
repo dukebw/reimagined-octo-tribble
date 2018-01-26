@@ -20,6 +20,7 @@
 #define ROT_MATH_H
 
 #include "rot_arena.h"
+#include "rot_platform.h"
 #include <stdint.h>
 
 typedef struct rot_tensor *rot_tensor_t;
@@ -30,12 +31,15 @@ typedef struct rot_tensor *rot_tensor_t;
  * @arena: Memory arena to allocate tensor from.
  * @num_dims: Number of dimensions of the tensor to allocate.
  * @dims: Size of each dimension of the allocated tensor.
+ * @backend: Whether the tensor is a CPU tensor, or an ROC tensor etc. In
+ * general, `backend` refers to which hardware backend should be used.
  *
  * Returns NULL on error.
  */
 rot_tensor_t ROT_create_tensor(rot_arena_t arena,
                                uint32_t num_dims,
-                               const size_t *dims);
+                               const size_t *dims,
+                               enum rot_backend backend);
 
 /**
  * ROT_matmul()
