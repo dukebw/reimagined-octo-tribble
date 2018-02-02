@@ -30,18 +30,15 @@ struct rot_arena_cpu {
 };
 
 struct rot_arena_roc {
-        void **mem_blocks;
         size_t block_bytes;
+        void **mem_blocks;
         uint32_t num_blocks;
-        size_t used_bytes[];
+        size_t *used_bytes;
 };
 
 struct rot_arena {
-        enum rot_backend backend;
-        union {
-                struct rot_arena_cpu cpu;
-                struct rot_arena_roc roc;
-        };
+        struct rot_arena_cpu cpu;
+        struct rot_arena_roc roc;
 };
 
 static bool
@@ -76,17 +73,19 @@ arena_roc_can_alloc(const struct rot_arena_roc *arena_roc,
         return false;
 }
 
-bool ROT_arena_can_alloc(const rot_arena_t arena, size_t request_bytes)
+bool ROT_arena_can_alloc(const rot_arena_t arena,
+                         size_t request_bytes,
+                         enum rot_backend backend)
 {
         if (arena == NULL) {
                 LOG_NULL();
                 return false;
         }
 
-        if (arena->backend == ROT_BACKEND_CPU) {
+        if (backend == ROT_BACKEND_CPU) {
                 return arena_cpu_can_alloc(&arena->cpu, request_bytes);
-        } else if (arena->backend == ROT_BACKEND_ROC) {
-                return arena_roc_can_alloc(&arena_roc->roc, request_bytes);
+        } else if (backend == ROT_BACKEND_ROC) {
+                return arena_roc_can_alloc(&arena->roc, request_bytes);
         } else {
                 LOG_UNSUPPORTED();
                 return false;
@@ -134,19 +133,21 @@ arena_roc_malloc(struct rot_arena_roc *arena_roc, size_t malloc_bytes)
         return NULL;
 }
 
-void *ROT_arena_malloc(rot_arena_t arena, size_t malloc_bytes)
+void *ROT_arena_malloc(rot_arena_t arena,
+                       size_t malloc_bytes,
+                       enum rot_backend backend)
 {
         /**
          * NOTE(brendan): `arena is checked for NULL in `ROT_arena_can_alloc`.
          */
-        if (!ROT_arena_can_alloc(arena, malloc_bytes)) {
+        if (!ROT_arena_can_alloc(arena, malloc_bytes, backend)) {
                 LOG_ERROR("Not enough space in arena to malloc.");
                 return NULL;
         }
 
-        if (arena->backend == ROT_BACKEND_CPU) {
-                return arena_cpu_malloc(&arena->cpu, malloc_bytes)
-        } else if (arena->backend == ROT_BACKEND_ROC) {
+        if (backend == ROT_BACKEND_CPU) {
+                return arena_cpu_malloc(&arena->cpu, malloc_bytes);
+        } else if (backend == ROT_BACKEND_ROC) {
                 return arena_roc_malloc(&arena->roc, malloc_bytes);
         } else {
                 LOG_UNSUPPORTED();
@@ -159,55 +160,53 @@ size_t ROT_arena_min_bytes(void)
         return ROT_ARENA_MIN_BYTES;
 }
 
-/**
- * arena_roc_new() - Initializes a memory arena for the Radeon Open Compute
- * platform, i.e. AMD GPUs.
- * @arena: `ROT_arena` from which to allocate the ROC memory arena. Memory
- * on CPU is used to store the metadata for the GPU memory arena.
- * @memory: Pointer to `num_blocks` allocated memory pointers. Each memory
- * pointer must point to a contiguous block of `mem_bytes` of memory.
- * @block_bytes: Amount of memory allocated in each block.
- * @num_blocks: Number of block pointers pointed to by `memory`. I.e. the
- * number of blocks of memory allocated on the GPU, for use by the memory
- * arena.
- */
-static struct rot_arena *
-arena_roc_new(struct rot_arena *arena,
-              void **memory,
-              size_t block_bytes,
-              uint32_t num_blocks)
+struct rot_arena *
+ROT_arena_roc_new(struct rot_arena *arena,
+                  void **memory,
+                  size_t block_bytes,
+                  uint32_t num_blocks)
 {
-        /**
-         * TODO(brendan): This is no longer quite right, since
-         * `struct rot_arena_roc` is now a member of `struct rot_arena` (via
-         * the union).
-         */
-        /**
-         * NOTE(brendan): `ROT_arena_malloc` checks that `arena` has enough
-         * space to allocate, so we just test the return value here.
-         */
-        size_t required_bytes = (sizeof(struct rot_arena_roc) +
-                                 num_blocks*sizeof(size_t));
-        struct rot_arena_roc *arena_roc =
-                (struct rot_arena_roc *)ROT_arena_malloc(arena,
-                                                         required_bytes);
-        if (arena_roc == NULL)
+        if ((arena == NULL) || (memory == NULL)) {
+                LOG_NULL();
                 return NULL;
-
-        arena_roc->block_bytes = block_bytes;
-        arena_roc->mem_blocks = memory;
-        arena_roc->num_blocks = num_blocks;
+        }
 
         for (uint32_t block_i = 0;
              block_i < num_blocks;
              ++block_i) {
-                arena_roc->used_bytes[block_i] = 0;
+                if (memory[block_i] == NULL) {
+                        LOG_NULL();
+                        return NULL;
+                }
+        }
+
+        /**
+         * NOTE(brendan): `ROT_arena_malloc` checks that `arena` has enough
+         * space to allocate, so we just test the return value here.
+         */
+        size_t required_bytes = num_blocks*sizeof(size_t);
+        arena->roc.used_bytes = (size_t *)ROT_arena_malloc(arena,
+                                                           required_bytes,
+                                                           ROT_BACKEND_CPU);
+        if (arena->roc.used_bytes == NULL)
+                return NULL;
+
+        arena->roc.block_bytes = block_bytes;
+        arena->roc.mem_blocks = memory;
+        arena->roc.num_blocks = num_blocks;
+
+        for (uint32_t block_i = 0;
+             block_i < num_blocks;
+             ++block_i) {
+                arena->roc.used_bytes[block_i] = 0;
         }
 
         return arena;
 }
 
-rot_arena_t ROT_arena_new(void *memory, size_t mem_bytes)
+rot_arena_t ROT_arena_new(void *memory,
+                          size_t mem_bytes,
+                          enum rot_backend backend)
 {
         if (memory == NULL) {
                 LOG_NULL();
@@ -221,11 +220,18 @@ rot_arena_t ROT_arena_new(void *memory, size_t mem_bytes)
         }
 
         struct rot_arena *arena = (struct rot_arena *)memory;
-        arena->mem_bytes = mem_bytes;
-        arena->used_bytes = sizeof(struct rot_arena);
-
-        if (arena->backend == ROT_BACKEND_CPU) {
-                return (struct rot_arena *)memory;
-        } else if (arena->backend == ROT_BACKEND_ROC) {
+        if (backend == ROT_BACKEND_CPU) {
+                arena->cpu.mem_bytes = mem_bytes;
+                arena->cpu.used_bytes = sizeof(struct rot_arena);
+        } else if (backend == ROT_BACKEND_ROC) {
+                arena->roc.block_bytes = 0;
+                arena->roc.mem_blocks = NULL;
+                arena->roc.num_blocks = 0;
+                arena->roc.used_bytes = NULL;
+        } else {
+                LOG_UNSUPPORTED();
+                return NULL;
         }
+
+        return (struct rot_arena *)memory;
 }

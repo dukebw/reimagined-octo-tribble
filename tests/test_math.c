@@ -151,7 +151,7 @@ get_gsl_rng(void)
 static void
 get_tensor_data(struct tensor_data *td, rot_arena_t arena, const size_t *dims)
 {
-        td->tensor = ROT_create_tensor(arena, 2, dims);
+        td->tensor = ROT_create_tensor(arena, 2, dims, ROT_BACKEND_CPU);
         assert(td->tensor != NULL);
 
         td->data = ROT_tensor_get_data(td->tensor);
@@ -204,7 +204,7 @@ setup_matmul_test_state(struct matmul_test_state *state,
                         size_t mem_bytes,
                         const struct matmul_dims *dims)
 {
-        state->arena = ROT_arena_new(mem, mem_bytes);
+        state->arena = ROT_arena_new(mem, mem_bytes, ROT_BACKEND_CPU);
         assert(state->arena != NULL);
 
         const size_t mk_dims[] = {dims->m, dims->k};
@@ -223,7 +223,9 @@ setup_matmul_test_state(struct matmul_test_state *state,
         size_t c_num_elems = dims->m*dims->n;
 
         size_t c_bytes = c_num_elems*sizeof(float);
-        float *temp_c_data = (float *)ROT_arena_malloc(state->arena, c_bytes);
+        float *temp_c_data = (float *)ROT_arena_malloc(state->arena,
+                                                       c_bytes,
+                                                       ROT_BACKEND_CPU);
         assert(temp_c_data != NULL);
 
         state->th_a = create_th_tensor(state->a.data, mk_dims, a_num_elems);
@@ -329,12 +331,14 @@ static MIN_UNIT_TEST_FUNC(test_matmul_small_cudnn)
 }
 
 static hipDeviceptr_t
-init_tensor_on_dev(rot_arena_roc_t arena_roc,
+init_tensor_on_dev(rot_arena_t arena_roc,
                    const struct tensor_data t,
                    hipStream_t stream,
                    size_t limit)
 {
-        hipDeviceptr_t t_device = ROT_arena_roc_malloc(arena_roc, limit);
+        hipDeviceptr_t t_device = ROT_arena_malloc(arena_roc,
+                                                   limit,
+                                                   ROT_BACKEND_ROC);
         assert(t_device != NULL);
 
         size_t t_size = ROT_tensor_get_size(t.tensor);
@@ -380,10 +384,10 @@ static MIN_UNIT_TEST_FUNC(test_matmul_small_miopen)
                 assert(hip_err == hipSuccess);
         }
 
-        rot_arena_roc_t arena_roc = ROT_arena_roc_new(state.arena,
-                                                      roc_mem_blocks,
-                                                      limit,
-                                                      num_blocks);
+        rot_arena_t arena_roc = ROT_arena_roc_new(state.arena,
+                                                  roc_mem_blocks,
+                                                  limit,
+                                                  num_blocks);
         assert(arena_roc != NULL);
 
         hipDeviceptr_t a_dev = init_tensor_on_dev(arena_roc,
@@ -395,7 +399,9 @@ static MIN_UNIT_TEST_FUNC(test_matmul_small_miopen)
                                                   stream,
                                                   limit);
 
-        hipDeviceptr_t c_dev = ROT_arena_roc_malloc(arena_roc, limit);
+        hipDeviceptr_t c_dev = ROT_arena_malloc(arena_roc,
+                                                limit,
+                                                ROT_BACKEND_ROC);
         assert(hip_err == hipSuccess);
 
         hip_err = hipStreamSynchronize(stream);

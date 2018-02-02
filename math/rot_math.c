@@ -43,14 +43,15 @@ struct rot_roc_tensor {
  * slowest changing dimension, and dims[num_dims - 1] is the quickest changing
  * dimension.
  *
- * E.g. for a matrix, dims[0] would be the dimension of the
- * rows, and dims[1] would be the dimension for the columns.
+ * E.g. for a matrix, dims[0] would be the dimension of the rows, and dims[1]
+ * would be the dimension for the columns.
  *
  * TODO(brendan): Supported dimensions? Different types?
  */
 struct rot_tensor {
-        uint32_t num_dims;
+        enum rot_backend backend;
         size_t *dims;
+        uint32_t num_dims;
         union {
                 struct rot_cpu_tensor cpu;
                 struct rot_roc_tensor roc;
@@ -60,7 +61,7 @@ struct rot_tensor {
 rot_tensor_t ROT_create_tensor(rot_arena_t arena,
                                uint32_t num_dims,
                                const size_t *dims,
-                               enum rot_math_type type);
+                               enum rot_backend backend)
 {
         if ((dims == NULL) || (arena == NULL)) {
                 LOG_NULL();
@@ -73,34 +74,47 @@ rot_tensor_t ROT_create_tensor(rot_arena_t arena,
                 return NULL;
         }
 
-        size_t required_bytes = dims[0]*sizeof(float);
-        for (uint32_t dim = 1;
-             dim < num_dims;
-             ++dim) {
-                required_bytes *= dims[dim];
+        if ((backend != ROT_BACKEND_CPU) && (backend != ROT_BACKEND_ROC)) {
+                LOG_UNSUPPORTED();
+                return NULL;
         }
 
-        required_bytes += sizeof(struct rot_tensor);
+        size_t required_bytes = sizeof(struct rot_tensor);
         /**
          * NOTE(brendan): Storage for the dimensions' respective sizes must
          * also be allocated. These dimension sizes are placed _after_ all the
          * space for the data.
          *
          * So, the memory layout of a tensor is:
-         * | num_dims | *dims | data | dims |
+         * | backend | *dims | num_dims | data | dims |
          * where *dims is a pointer to dims.
          */
         size_t dim_sizes_bytes = sizeof(size_t)*num_dims;
         required_bytes += dim_sizes_bytes;
 
-        if (!ROT_arena_can_alloc(arena, required_bytes)) {
-                LOG_ERROR("Not enough space to allocate tensor.");
-                return NULL;
+        size_t data_bytes = dims[0]*sizeof(float);
+        for (uint32_t dim = 1;
+             dim < num_dims;
+             ++dim) {
+                data_bytes *= dims[dim];
         }
 
+        /**
+         * NOTE(brendan): In the case of CPU tensors, data is stored in memory
+         * directly contiguous with the tensor struct's metadata, and it can be
+         * checked here that there is enough memory to allocate struct + data.
+         */
+        if (backend == ROT_BACKEND_CPU)
+                required_bytes += data_bytes;
+
         struct rot_tensor *result =
-                (struct rot_tensor *)ROT_arena_malloc(arena, required_bytes);
-        result->num_dims = num_dims;
+                (struct rot_tensor *)ROT_arena_malloc(arena,
+                                                      required_bytes,
+                                                      ROT_BACKEND_CPU);
+        if (result == NULL)
+                return NULL;
+
+        result->backend = backend;
         result->dims = (size_t *)((char *)result +
                                   (required_bytes - dim_sizes_bytes));
 
@@ -108,6 +122,16 @@ rot_tensor_t ROT_create_tensor(rot_arena_t arena,
              dim < num_dims;
              ++dim) {
                 result->dims[dim] = dims[dim];
+        }
+
+        result->num_dims = num_dims;
+
+        if (backend == ROT_BACKEND_ROC) {
+                result->roc.data = ROT_arena_malloc(arena,
+                                                    data_bytes,
+                                                    ROT_BACKEND_ROC);
+                if (result->roc.data == NULL)
+                        return NULL;
         }
 
         return result;

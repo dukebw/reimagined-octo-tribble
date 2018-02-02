@@ -31,8 +31,7 @@ typedef struct rot_tensor *rot_tensor_t;
  * @arena: Memory arena to allocate tensor from.
  * @num_dims: Number of dimensions of the tensor to allocate.
  * @dims: Size of each dimension of the allocated tensor.
- * @backend: Whether the tensor is a CPU tensor, or an ROC tensor etc. In
- * general, `backend` refers to which hardware backend should be used.
+ * @backend: The backend used for the tensor.
  *
  * Returns NULL on error.
  */
