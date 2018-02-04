@@ -204,9 +204,7 @@ ROT_arena_roc_new(struct rot_arena *arena,
         return arena;
 }
 
-rot_arena_t ROT_arena_new(void *memory,
-                          size_t mem_bytes,
-                          enum rot_backend backend)
+rot_arena_t ROT_arena_new(void *memory, size_t mem_bytes)
 {
         if (memory == NULL) {
                 LOG_NULL();
@@ -220,18 +218,12 @@ rot_arena_t ROT_arena_new(void *memory,
         }
 
         struct rot_arena *arena = (struct rot_arena *)memory;
-        if (backend == ROT_BACKEND_CPU) {
-                arena->cpu.mem_bytes = mem_bytes;
-                arena->cpu.used_bytes = sizeof(struct rot_arena);
-        } else if (backend == ROT_BACKEND_ROC) {
-                arena->roc.block_bytes = 0;
-                arena->roc.mem_blocks = NULL;
-                arena->roc.num_blocks = 0;
-                arena->roc.used_bytes = NULL;
-        } else {
-                LOG_UNSUPPORTED();
-                return NULL;
-        }
+        arena->cpu.mem_bytes = mem_bytes;
+        arena->cpu.used_bytes = sizeof(struct rot_arena);
+        arena->roc.block_bytes = 0;
+        arena->roc.mem_blocks = NULL;
+        arena->roc.num_blocks = 0;
+        arena->roc.used_bytes = NULL;
 
         return (struct rot_arena *)memory;
 }

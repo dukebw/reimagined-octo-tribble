@@ -61,11 +61,8 @@ size_t ROT_arena_min_bytes(void);
  * @memory: Non-NULL pointer to an array of allocated contiguous buffer of
  * mem_bytes many bytes.
  * @mem_bytes: Size of memory in bytes.
- * @backend: Hardware backend for which the new memory arena will be allocated.
  */
-rot_arena_t ROT_arena_new(void *memory,
-                          size_t mem_bytes,
-                          enum rot_backend backend);
+rot_arena_t ROT_arena_new(void *memory, size_t mem_bytes);
 
 /**
  * arena_roc_new() - Initializes a memory arena for the Radeon Open Compute

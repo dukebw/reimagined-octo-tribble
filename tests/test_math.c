@@ -204,7 +204,7 @@ setup_matmul_test_state(struct matmul_test_state *state,
                         size_t mem_bytes,
                         const struct matmul_dims *dims)
 {
-        state->arena = ROT_arena_new(mem, mem_bytes, ROT_BACKEND_CPU);
+        state->arena = ROT_arena_new(mem, mem_bytes);
         assert(state->arena != NULL);
 
         const size_t mk_dims[] = {dims->m, dims->k};
