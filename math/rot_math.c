@@ -183,7 +183,19 @@ rot_tensor_t ROT_matmul(rot_tensor_t result,
 
 float *ROT_tensor_get_data(rot_tensor_t tensor)
 {
-        return tensor->cpu.data;
+        if (tensor->backend == ROT_BACKEND_CPU) {
+                return tensor->cpu.data;
+        } else if (tensor->backend == ROT_BACKEND_ROC) {
+                return (float *)tensor->roc.data;
+        } else {
+                LOG_UNSUPPORTED();
+                return NULL;
+        }
+}
+
+const size_t *ROT_tensor_get_dims(rot_tensor_t tensor)
+{
+        return tensor->dims;
 }
 
 size_t ROT_tensor_get_size(rot_tensor_t tensor)

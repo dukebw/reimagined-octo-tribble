@@ -330,26 +330,31 @@ static MIN_UNIT_TEST_FUNC(test_matmul_small_cudnn)
 {
 }
 
-static hipDeviceptr_t
-init_tensor_on_dev(rot_arena_t arena_roc,
-                   const struct tensor_data t,
-                   hipStream_t stream,
-                   size_t limit)
+static rot_tensor_t
+init_roc_tensor(rot_arena_t arena_roc,
+                const struct tensor_data t,
+                hipStream_t stream,
+                size_t limit)
 {
-        hipDeviceptr_t t_device = ROT_arena_malloc(arena_roc,
-                                                   limit,
-                                                   ROT_BACKEND_ROC);
-        assert(t_device != NULL);
+        const size_t *dims = ROT_tensor_get_dims(t.tensor);
+        assert(dims != NULL);
+
+        rot_tensor_t a_tens = ROT_create_tensor(arena_roc,
+                                                2,
+                                                dims,
+                                                ROT_BACKEND_ROC);
+
+        float *a_data = ROT_tensor_get_data(a_tens);
+        assert(a_data != NULL);
 
         size_t t_size = ROT_tensor_get_size(t.tensor);
-
-        hipError_t hip_err = hipMemcpyHtoDAsync(t_device,
+        hipError_t hip_err = hipMemcpyHtoDAsync(a_data,
                                                 t.data,
                                                 t_size,
                                                 stream);
         assert(hip_err == hipSuccess);
 
-        return t_device;
+        return a_tens;
 }
 
 static MIN_UNIT_TEST_FUNC(test_matmul_small_miopen)
@@ -390,18 +395,25 @@ static MIN_UNIT_TEST_FUNC(test_matmul_small_miopen)
                                                   num_blocks);
         assert(arena_roc != NULL);
 
-        hipDeviceptr_t a_dev = init_tensor_on_dev(arena_roc,
-                                                  state.a,
-                                                  stream,
-                                                  limit);
-        hipDeviceptr_t b_dev = init_tensor_on_dev(arena_roc,
-                                                  state.b,
-                                                  stream,
-                                                  limit);
+        rot_tensor_t a_tens = init_roc_tensor(arena_roc,
+                                              state.a,
+                                              stream,
+                                              limit);
 
-        hipDeviceptr_t c_dev = ROT_arena_malloc(arena_roc,
-                                                limit,
-                                                ROT_BACKEND_ROC);
+        rot_tensor_t b_tens = init_roc_tensor(arena_roc,
+                                              state.b,
+                                              stream,
+                                              limit);
+
+        const float *a_dev = (const float *)ROT_tensor_get_data(a_tens);
+        assert(a_dev != NULL);
+
+        const float *b_dev = (const float *)ROT_tensor_get_data(b_tens);
+        assert(b_dev != NULL);
+
+        float *c_dev = (float *)ROT_arena_malloc(arena_roc,
+                                                 limit,
+                                                 ROT_BACKEND_ROC);
         assert(hip_err == hipSuccess);
 
         hip_err = hipStreamSynchronize(stream);
@@ -420,12 +432,12 @@ static MIN_UNIT_TEST_FUNC(test_matmul_small_miopen)
                                   dims.m,
                                   dims.k,
                                   &alpha,
-                                  (const float *)b_dev,
+                                  b_dev,
                                   dims.n,
-                                  (const float *)a_dev,
+                                  a_dev,
                                   dims.k,
                                   &beta,
-                                  (float *)c_dev,
+                                  c_dev,
                                   dims.n);
         assert(rblas_err == rocblas_status_success);
 

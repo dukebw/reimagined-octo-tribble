@@ -70,10 +70,16 @@ rot_tensor_t ROT_matmul(rot_tensor_t result,
                         const rot_tensor_t b);
 
 /**
- * ROT_tensor_get_data() - Returns a pointer to the float data in tensor `a`.
+ * ROT_tensor_get_data() - Returns a pointer to the float data in `tensor`.
  * @tensor: A tensor.
  */
 float *ROT_tensor_get_data(rot_tensor_t tensor);
+
+/**
+ * ROT_tensor_get_dims() - Returns a pointer to the dimensions in `tensor`.
+ * @tensor: A tensor.
+ */
+const size_t *ROT_tensor_get_dims(rot_tensor_t tensor);
 
 /**
  * ROT_tensor_get_size() - Returns the size in bytes of the data pointed to by
