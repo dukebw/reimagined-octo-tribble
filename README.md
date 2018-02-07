@@ -7,7 +7,8 @@
 [Ninja](https://github.com/ninja-build/ninja) are dependencies for the build.
 
 ```
-meson build && cd build
+CC=clang CXX=clang meson build --buildtype debugoptimized
+cd build
 ninja && ninja test
 ```
 

@@ -22,7 +22,8 @@
 #include <stdint.h>
 
 #define LOG_ERROR(s) log_error(s, __func__, __FILE__, __LINE__)
-#define LOG_NULL(s) LOG_ERROR("Null input.")
+#define LOG_NULL() LOG_ERROR("Null input.")
+#define LOG_UNSUPPORTED() LOG_ERROR("Unsupported backend.")
 
 /**
  * log_error.h - The purpose of this module is to provide internal interfaces
