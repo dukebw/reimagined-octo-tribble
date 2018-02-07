@@ -21,13 +21,7 @@
 #include "TH/TH.h"
 #include "gsl/gsl_rng.h"
 #include "gsl/gsl_randist.h"
-#include "cblas.h"
-/*
- * TODO(brendan): There is a compile error if rocblas.h is included after
- * hip_runtime_api.h...
- */
-#include "rocblas.h"
-#include "hip/hcc_detail/hip_runtime_api.h"
+#include "hip/hip_runtime_api.h"
 
 #include <assert.h>
 #include <float.h>
@@ -343,6 +337,7 @@ init_roc_tensor(rot_arena_t arena_roc,
                                                 2,
                                                 dims,
                                                 ROT_BACKEND_ROC);
+        assert(a_tens != NULL);
 
         float *a_data = ROT_tensor_get_data(a_tens);
         assert(a_data != NULL);
@@ -405,44 +400,21 @@ static MIN_UNIT_TEST_FUNC(test_matmul_small_miopen)
                                               stream,
                                               limit);
 
-        const float *a_dev = (const float *)ROT_tensor_get_data(a_tens);
-        assert(a_dev != NULL);
-
-        const float *b_dev = (const float *)ROT_tensor_get_data(b_tens);
-        assert(b_dev != NULL);
-
-        float *c_dev = (float *)ROT_arena_malloc(arena_roc,
-                                                 limit,
-                                                 ROT_BACKEND_ROC);
-        assert(hip_err == hipSuccess);
+        const size_t mn_dims[] = {dims.m, dims.n};
+        rot_tensor_t c_tens = ROT_create_tensor(arena_roc,
+                                                2,
+                                                mn_dims,
+                                                ROT_BACKEND_ROC);
+        assert(c_tens != NULL);
 
         hip_err = hipStreamSynchronize(stream);
         assert(hip_err == hipSuccess);
 
-        rocblas_handle handle;
-        rocblas_status rblas_err = rocblas_create_handle(&handle);
-        assert(rblas_err == rocblas_status_success);
+        c_tens = ROT_matmul(c_tens, a_tens, b_tens);
+        assert(c_tens != NULL);
 
-        const float alpha = 1.0f;
-        const float beta = 0.0f;
-        rblas_err = rocblas_sgemm(handle,
-                                  rocblas_operation_none,
-                                  rocblas_operation_none,
-                                  dims.n,
-                                  dims.m,
-                                  dims.k,
-                                  &alpha,
-                                  b_dev,
-                                  dims.n,
-                                  a_dev,
-                                  dims.k,
-                                  &beta,
-                                  c_dev,
-                                  dims.n);
-        assert(rblas_err == rocblas_status_success);
-
-        rblas_err = rocblas_destroy_handle(handle);
-        assert(rblas_err == rocblas_status_success);
+        float *c_dev = (float *)ROT_tensor_get_data(c_tens);
+        assert(c_dev != NULL);
 
         hip_err = hipMemcpyDtoH(state.c.data,
                                 c_dev,

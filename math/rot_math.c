@@ -21,6 +21,8 @@
 #include "platform/math.h"
 
 #include "cblas.h"
+#include "hip/hip_runtime_api.h"
+#include "rocblas.h"
 #include <stdlib.h>
 
 struct rot_cpu_tensor {
@@ -137,6 +139,75 @@ rot_tensor_t ROT_create_tensor(rot_arena_t arena,
         return result;
 }
 
+static rot_tensor_t
+matmul_roc(rot_tensor_t result, const rot_tensor_t a, const rot_tensor_t b)
+{
+        const float *a_dev = (const float *)ROT_tensor_get_data(a);
+        const float *b_dev = (const float *)ROT_tensor_get_data(b);
+        float *result_dev = (float *)ROT_tensor_get_data(result);
+        if ((a_dev == NULL) || (b_dev == NULL) || (result_dev == NULL)) {
+                LOG_ERROR("ROC tensor argument has uninitialized memory.");
+                return NULL;
+        }
+
+        rocblas_handle handle;
+        rocblas_status rblas_err = rocblas_create_handle(&handle);
+        if (rblas_err != rocblas_status_success) {
+                LOG_ERROR("ROC error creating handle.");
+                return NULL;
+        }
+
+        const float alpha = 1.0f;
+        const float beta = 0.0f;
+        rblas_err = rocblas_sgemm(handle,
+                                  rocblas_operation_none,
+                                  rocblas_operation_none,
+                                  b->dims[1],
+                                  a->dims[0],
+                                  a->dims[1],
+                                  &alpha,
+                                  b_dev,
+                                  b->dims[1],
+                                  a_dev,
+                                  a->dims[1],
+                                  &beta,
+                                  result_dev,
+                                  b->dims[1]);
+        if (rblas_err != rocblas_status_success) {
+                LOG_ERROR("ROC sgemm error.");
+                return NULL;
+        }
+
+        rblas_err = rocblas_destroy_handle(handle);
+        if (rblas_err != rocblas_status_success) {
+                LOG_ERROR("ROC error destroying handle.");
+                return NULL;
+        }
+
+        return result;
+}
+
+static rot_tensor_t
+matmul_cpu(rot_tensor_t result, const rot_tensor_t a, const rot_tensor_t b)
+{
+        cblas_sgemm(CblasRowMajor,
+                    CblasNoTrans,
+                    CblasNoTrans,
+                    a->dims[0],
+                    b->dims[1],
+                    a->dims[1],
+                    1.0f,
+                    a->cpu.data,
+                    a->dims[1],
+                    b->cpu.data,
+                    b->dims[1],
+                    0.0f,
+                    result->cpu.data,
+                    b->dims[1]);
+
+        return result;
+}
+
 rot_tensor_t ROT_matmul(rot_tensor_t result,
                         const rot_tensor_t a,
                         const rot_tensor_t b)
@@ -163,22 +234,20 @@ rot_tensor_t ROT_matmul(rot_tensor_t result,
                 return NULL;
         }
 
-        cblas_sgemm(CblasRowMajor,
-                    CblasNoTrans,
-                    CblasNoTrans,
-                    a->dims[0],
-                    b->dims[1],
-                    a->dims[1],
-                    1.0f,
-                    a->cpu.data,
-                    a->dims[1],
-                    b->cpu.data,
-                    b->dims[1],
-                    0.0f,
-                    result->cpu.data,
-                    b->dims[1]);
+        if (a->backend != b->backend) {
+                LOG_ERROR("Tensor arguments to matmul must use the same "
+                          "hardware backend.");
+                return NULL;
+        }
 
-        return result;
+        if (a->backend == ROT_BACKEND_CPU) {
+                return matmul_cpu(result, a, b);
+        } else if (a->backend == ROT_BACKEND_ROC) {
+                return matmul_roc(result, a, b);
+        } else {
+                LOG_UNSUPPORTED();
+                return NULL;
+        }
 }
 
 float *ROT_tensor_get_data(rot_tensor_t tensor)
