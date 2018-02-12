@@ -1,5 +1,7 @@
 project('rot-ml-library', 'c')
 
+cublas_dep = dependency('cublas')
+cudart_dep = dependency('cudart')
 gsl_dep = dependency('gsl')
 openblas_dep = dependency('openblas')
 torch_dep = dependency('ATen')
@@ -12,6 +14,10 @@ test_math = executable('test_math',
                        'error/stopif.c',
                        'error/log_error.c',
                        link_with : lib,
-                       dependencies : [gsl_dep, torch_dep])
+                       dependencies : [cublas_dep,
+                                       cudart_dep,
+                                       openblas_dep,
+                                       gsl_dep,
+                                       torch_dep])
 
 test('Test rot_math.', test_math)

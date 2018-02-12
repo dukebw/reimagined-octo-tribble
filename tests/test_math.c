@@ -17,15 +17,21 @@
  * ROT ML Library. If not, see <http://www.gnu.org/licenses/>.
  */
 #include "rot_math.h"
+#include "platform/cudnn.h"
 #include "tests/min_unit.h"
-#include "TH/TH.h"
+
+/* TODO(brendan): move the cuda includes to platform. */
+#include "cuda_runtime.h"
+#include "cublas_v2.h"
 #include "gsl/gsl_rng.h"
 #include "gsl/gsl_randist.h"
+#include "TH/TH.h"
 
 #include <assert.h>
 #include <float.h>
 #include <stdlib.h>
 #include <sys/time.h>
+#include <unistd.h>
 
 /**
  * struct matmul_dims - Dimensions describing a matrix multiply of an NxM
@@ -199,30 +205,59 @@ setup_matmul_test_state(struct matmul_test_state *state,
         state->arena = ROT_arena_new(mem, mem_bytes);
         assert(state->arena != NULL);
 
-        const size_t nm_dims[] = {dims->n, dims->m};
-        get_tensor_data(&state->a, state->arena, nm_dims);
-
         const size_t mk_dims[] = {dims->m, dims->k};
-        get_tensor_data(&state->b, state->arena, mk_dims);
+        get_tensor_data(&state->a, state->arena, mk_dims);
 
-        const size_t nk_dims[] = {dims->n, dims->k};
-        get_tensor_data(&state->c, state->arena, nk_dims);
+        const size_t kn_dims[] = {dims->k, dims->n};
+        get_tensor_data(&state->b, state->arena, kn_dims);
+
+        const size_t mn_dims[] = {dims->m, dims->n};
+        get_tensor_data(&state->c, state->arena, mn_dims);
+
+        for (uint32_t i = 0;
+             i < dims->n*dims->m;
+             ++i) {
+                state->c.data[i] = 1.0 + i;
+        }
 
         gsl_rng *rng = get_gsl_rng();
 
-        size_t a_num_elems = init_data_uniform(state->a.data, rng, nm_dims);
-        size_t b_num_elems = init_data_uniform(state->b.data, rng, mk_dims);
-        size_t c_num_elems = dims->n*dims->k;
+        size_t a_num_elems = init_data_uniform(state->a.data, rng, mk_dims);
+        size_t b_num_elems = init_data_uniform(state->b.data, rng, kn_dims);
+        size_t c_num_elems = dims->n*dims->m;
 
         size_t c_bytes = c_num_elems*sizeof(float);
         float *temp_c_data = ROT_arena_malloc(state->arena, c_bytes);
         assert(temp_c_data != NULL);
 
-        state->th_a = create_th_tensor(state->a.data, nm_dims, a_num_elems);
-        state->th_b = create_th_tensor(state->b.data, mk_dims, b_num_elems);
-        state->th_c = create_th_tensor(temp_c_data, nk_dims, c_num_elems);
+        state->th_a = create_th_tensor(state->a.data, mk_dims, a_num_elems);
+        state->th_b = create_th_tensor(state->b.data, kn_dims, b_num_elems);
+        state->th_c = create_th_tensor(temp_c_data, mn_dims, c_num_elems);
 
         gsl_rng_free(rng);
+}
+
+/**
+ * rand_dim() - Returns a random dimension in [1, `max_dim`).
+ */
+static size_t
+rand_dim(uint32_t max_dim)
+{
+        return (rand() % max_dim) + 1;
+}
+
+static struct matmul_dims
+setup_matmul_test_state_small(struct matmul_test_state *state,
+                              uint8_t *memory,
+                              size_t memory_bytes)
+{
+        struct matmul_dims dims = {.n = rand_dim(128),
+                                   .m = rand_dim(128),
+                                   .k = rand_dim(128)};
+
+        setup_matmul_test_state(state, memory, memory_bytes, &dims);
+
+        return dims;
 }
 
 /**
@@ -236,13 +271,29 @@ get_elapsed_sec(struct timeval start, struct timeval end)
                 (end.tv_usec - start.tv_usec)/1e6);
 }
 
-/**
- * rand_dim() - Returns a random dimension in [1, `max_dim`).
- */
-static size_t
-rand_dim(uint32_t max_dim)
+static void
+check_result_against_th(struct matmul_test_state *state,
+                        const struct matmul_dims *dims,
+                        float epsilon)
 {
-        return (rand() % max_dim) + 1;
+        THFloatTensor_addmm(state->th_c,
+                            0.0,
+                            state->th_c,
+                            1.0,
+                            state->th_a,
+                            state->th_b);
+
+        for (uint32_t i = 0;
+             i < dims->m*dims->n;
+             ++i) {
+                /* printf("%.5f\n", state->th_c->storage->data[i]); */
+                /* printf("%.5f\n", state->c.data[i]); */
+                /* printf("\n"); */
+                float diff = state->th_c->storage->data[i] - state->c.data[i];
+                MIN_UNIT_ASSERT(fabs(diff) < epsilon,
+                                "ROT_matmul mismatches TH_addmm at index %d\n",
+                                i);
+        }
 }
 
 /**
@@ -256,20 +307,9 @@ rand_dim(uint32_t max_dim)
 static MIN_UNIT_TEST_FUNC(test_matmul_small)
 {
         uint8_t memory[512*1024];
-        struct matmul_dims dims = {.n = rand_dim(128),
-                                   .m = rand_dim(128),
-                                   .k = rand_dim(128)};
-
         struct matmul_test_state state;
-        setup_matmul_test_state(&state, memory, sizeof(memory), &dims);
-
-        /* TODO(brendan): Error: matrices expected, got 2D, 1D tensors */
-        THFloatTensor_addmm(state.th_c,
-                            0.0,
-                            state.th_c,
-                            1.0,
-                            state.th_a,
-                            state.th_b);
+        struct matmul_dims dims =
+                setup_matmul_test_state_small(&state, memory, sizeof(memory));
 
         state.c.tensor = ROT_matmul(state.c.tensor,
                                     state.a.tensor,
@@ -278,24 +318,7 @@ static MIN_UNIT_TEST_FUNC(test_matmul_small)
                         "NULL returned from ROT_matmul, expected "
                         "rot_tensor\n");
 
-        for (uint32_t i = 0;
-             i < dims.n*dims.k;
-             ++i) {
-                float diff = state.th_c->storage->data[i] - state.c.data[i];
-                /**
-                 * TODO(brendan): A couple of issues, both having to do with
-                 * the cblas installed, even after installing OpenBLAS from
-                 * source.
-                 *
-                 * 1. Accuracy of result is off.
-                 * 2. Performance is 10x too slow.
-                 *
-                 * Rectify both by compiling openBLAS on the system?
-                 */
-                MIN_UNIT_ASSERT(fabs(diff) < FLT_EPSILON,
-                                "ROT_matmul mismatches TH_addmm at index %d\n",
-                                i);
-        }
+        check_result_against_th(&state, &dims, FLT_EPSILON);
 
         THFloatTensor_free(state.th_a);
         THFloatTensor_free(state.th_b);
@@ -304,6 +327,101 @@ static MIN_UNIT_TEST_FUNC(test_matmul_small)
 
 static MIN_UNIT_TEST_FUNC(test_matmul_small_cudnn)
 {
+        const size_t memory_size = 1024*1024*1024;
+        uint8_t *memory = malloc(memory_size);
+        struct matmul_test_state state;
+
+        int32_t device_id;
+        cudaError_t cuda_err = cudaGetDevice(&device_id);
+        assert(cuda_err == cudaSuccess);
+
+        struct cudaDeviceProp device_prop;
+        cuda_err = cudaGetDeviceProperties(&device_prop, 0);
+        assert(cuda_err == cudaSuccess);
+
+        printf("Device id in use: %d\n%s: Compute capability: %d.%d\n\n",
+               device_id,
+               device_prop.name,
+               device_prop.major,
+               device_prop.minor);
+
+        size_t limit;
+        cuda_err = cudaDeviceGetLimit(&limit, cudaLimitMallocHeapSize);
+        assert(cuda_err == cudaSuccess);
+
+        const uint32_t max_dim = sqrt(limit/sizeof(float));
+        struct matmul_dims dims = {.n = rand_dim(max_dim),
+                                   .m = rand_dim(max_dim),
+                                   .k = rand_dim(max_dim)};
+
+        setup_matmul_test_state(&state, memory, memory_size, &dims);
+
+        printf("CUDA GPU alloc limit: %lu\n", limit);
+
+        /* NOTE(brendan): major version 2 corresponds to Fermi. */
+        assert(device_prop.major >= 2);
+
+        const size_t CUDA_MEM_BYTES = 1024*1024*1024;
+        size_t a_bytes = sizeof(float)*dims.m*dims.k;
+        size_t b_bytes = sizeof(float)*dims.k*dims.n;
+        size_t c_bytes = sizeof(float)*dims.m*dims.n;
+        size_t required_bytes = a_bytes + b_bytes + c_bytes;
+        assert(CUDA_MEM_BYTES >= required_bytes);
+
+        void *cuda_memory;
+        cuda_err = cudaMalloc(&cuda_memory, CUDA_MEM_BYTES);
+        assert(cuda_err == cudaSuccess);
+
+        float *d_A = (float *)cuda_memory;
+        float *d_B = (float *)((uint8_t *)cuda_memory + a_bytes);
+        float *d_C = (float *)((uint8_t *)d_B + b_bytes);
+
+        cuda_err = cudaMemcpy(d_A,
+                              state.a.data,
+                              a_bytes,
+                              cudaMemcpyHostToDevice);
+        assert(cuda_err == cudaSuccess);
+
+        cuda_err = cudaMemcpy(d_B,
+                              state.b.data,
+                              b_bytes,
+                              cudaMemcpyHostToDevice);
+        assert(cuda_err == cudaSuccess);
+
+        cublasHandle_t handle;
+        cublasStatus_t cublas_status = cublasCreate(&handle);
+        assert(cublas_status == CUBLAS_STATUS_SUCCESS);
+
+        const float alpha = 1.0;
+        const float beta = 0.0;
+        cublas_status = cublasSgemm(handle,
+                                    CUBLAS_OP_N,
+                                    CUBLAS_OP_N,
+                                    dims.n,
+                                    dims.m,
+                                    dims.k,
+                                    &alpha,
+                                    d_B,
+                                    dims.n,
+                                    d_A,
+                                    dims.k,
+                                    &beta,
+                                    d_C,
+                                    dims.n);
+        assert(cublas_status == CUBLAS_STATUS_SUCCESS);
+
+        cuda_err = cudaMemcpy(state.c.data,
+                              d_C,
+                              c_bytes,
+                              cudaMemcpyDeviceToHost);
+        assert(cuda_err == cudaSuccess);
+
+        check_result_against_th(&state, &dims, 1024*FLT_EPSILON);
+
+        cuda_err = cudaFree(cuda_memory);
+        assert(cuda_err == cudaSuccess);
+
+        free(memory);
 }
 
 static MIN_UNIT_TEST_FUNC(test_matmul_small_miopen)
@@ -320,15 +438,11 @@ static MIN_UNIT_TEST_FUNC(test_matmul_small_miopen)
 static MIN_UNIT_TEST_FUNC(test_matmul_small_perf)
 {
         uint8_t memory[512*1024];
-        struct matmul_dims dims = {.n = rand_dim(128),
-                                   .m = rand_dim(128),
-                                   .k = rand_dim(128)};
+        struct matmul_test_state state;
+        setup_matmul_test_state_small(&state, memory, sizeof(memory));
 
         struct timeval start;
         get_and_check_time_of_day(&start);
-
-        struct matmul_test_state state;
-        setup_matmul_test_state(&state, memory, sizeof(memory), &dims);
 
         for (uint32_t i = 0;
              i < 256;
