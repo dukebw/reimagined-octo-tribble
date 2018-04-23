@@ -23,6 +23,10 @@
 #include "rot_platform.h"
 #include <stdint.h>
 
+/**
+ * TODO(brendan): Only ROT_matmul belongs in rot_math; put the rest in
+ * rot_types.
+ */
 typedef struct rot_tensor *rot_tensor_t;
 
 /**

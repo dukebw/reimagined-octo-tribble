@@ -11,6 +11,7 @@ link_extra_args = ['-lstdc++']
 lib = static_library('rot_ml',
                      'math/rot_math.c',
                      'memory/rot_arena.c',
+                     'nn/rot_nn.c',
                      c_args : c_extra_args,
                      dependencies : [openblas_dep],
                      link_args : link_extra_args)

@@ -16,6 +16,7 @@
  * You should have received a copy of the GNU General Public License along with
  * ROT ML Library. If not, see <http://www.gnu.org/licenses/>.
  */
+#include "rot_nn.h"
 #include "rot_math.h"
 #include "tests/min_unit.h"
 #include "TH/TH.h"
@@ -614,16 +615,7 @@ static MIN_UNIT_TEST_FUNC(test_feedforward_backward)
 
                 ROT_matmul(layer0.a, layer0.w, input_tensor);
 
-                /* NOTE(brendan): ReLU */
-                /* TODO(brendan): ROT ReLU + speed test vs. NNPACK */
-                float *layer0_a_data = ROT_tensor_get_data(layer0.a);
-                for (uint32_t a_i = 0;
-                     a_i < layer0_dims[0];
-                     ++a_i) {
-                        float val = layer0_a_data[a_i];
-                        if (__builtin_signbit(val))
-                                layer0_a_data[a_i] = 0.0f;
-                }
+                ROT_relu(layer0.a);
 
                 ROT_matmul(out_layer.a, out_layer.w, layer0.a);
                 /* TODO(brendan): find faster sigmoid and benchmark */
