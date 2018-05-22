@@ -29,7 +29,7 @@ void min_unit_assert(bool did_test_pass,
                      const char *func_name,
                      const char *filename,
                      int32_t line_number,
-                     char *msg_format_str,
+                     const char *msg_format_str,
                      ...)
 {
         va_list args;

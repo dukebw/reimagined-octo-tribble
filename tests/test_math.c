@@ -29,6 +29,7 @@
 
 #include <assert.h>
 #include <float.h>
+#include <math.h>
 #include <stdlib.h>
 #include <sys/time.h>
 #include <unistd.h>
@@ -72,8 +73,21 @@ struct matmul_test_state {
 };
 
 /**
- * create_th_tensor() - Allocates a a TH matrix with dimensions given by
- * `dims`, and initializes said matrix with `data`.
+ * get_th_tensor_data() - Get float pointer to data in th_tensor.
+ *
+ * @th_tensor: TH tensor to get data for.
+ */
+static float *
+get_th_tensor_data(const THFloatTensor *th_tensor)
+{
+        THFloatStorage* storage = THFloatTensor_storage(th_tensor);
+
+        return THFloatStorage_data(storage);
+}
+
+/**
+ * create_th_tensor() - Allocate a TH matrix with dimensions given by `dims`,
+ * and initialize said matrix with `data`.
  * @data: Data to initialize the TH matrix with.
  * @dims: [rows, columns] of the matrix.
  * @flat_size: Should be rows*columns.
@@ -87,7 +101,8 @@ create_th_tensor(float *data, const size_t *dims, size_t flat_size)
                                                                dims[1]);
         assert(th_tensor != NULL);
 
-        memcpy(th_tensor->storage->data, data, flat_size*sizeof(float));
+        float *tensor_data = get_th_tensor_data(th_tensor);
+        memcpy(tensor_data, data, flat_size*sizeof(float));
 
         return th_tensor;
 }
@@ -149,7 +164,7 @@ get_gsl_rng(void)
 static void
 get_tensor_data(struct tensor_data *td, rot_arena_t arena, const size_t *dims)
 {
-        td->tensor = ROT_create_tensor(arena, 2, dims);
+        td->tensor = ROT_create_tensor(arena, 2, dims, ROT_BACKEND_CPU);
         assert(td->tensor != NULL);
 
         td->data = ROT_tensor_get_data(td->tensor);
@@ -214,20 +229,16 @@ setup_matmul_test_state(struct matmul_test_state *state,
         const size_t mn_dims[] = {dims->m, dims->n};
         get_tensor_data(&state->c, state->arena, mn_dims);
 
-        for (uint32_t i = 0;
-             i < dims->n*dims->m;
-             ++i) {
-                state->c.data[i] = 1.0 + i;
-        }
-
         gsl_rng *rng = get_gsl_rng();
 
         size_t a_num_elems = init_data_uniform(state->a.data, rng, mk_dims);
         size_t b_num_elems = init_data_uniform(state->b.data, rng, kn_dims);
-        size_t c_num_elems = dims->n*dims->m;
+        size_t c_num_elems = dims->m*dims->n;
 
         size_t c_bytes = c_num_elems*sizeof(float);
-        float *temp_c_data = ROT_arena_malloc(state->arena, c_bytes);
+        float *temp_c_data = (float *)ROT_arena_malloc(state->arena,
+                                                       c_bytes,
+                                                       ROT_BACKEND_CPU);
         assert(temp_c_data != NULL);
 
         state->th_a = create_th_tensor(state->a.data, mk_dims, a_num_elems);
@@ -271,10 +282,26 @@ get_elapsed_sec(struct timeval start, struct timeval end)
                 (end.tv_usec - start.tv_usec)/1e6);
 }
 
+/**
+ * check_state_matches() - Verifies that the test state contained in `state` is
+ * consistent, i.e. that the computed result C is correct.
+ *
+ * @state: The test state struct, which already holds a result in `state->c`.
+ * `state->th_c` is updated by this function.
+ * @dims: Holds the dimensions m, n, k of A, B and C.
+ * @epsilon: The maximum value by which the computed result C is allowed to
+ * differ from the ground truth and still be considered a PASS.
+ *
+ * TODO(brendan): Should epsilon be a fraction of the magnitude of the ground
+ * truth, rather than an absolute value?
+ *
+ * The result C = A*B computed by ROT, is checked against the ground truth
+ * result computed by TH.
+ */
 static void
-check_result_against_th(struct matmul_test_state *state,
-                        const struct matmul_dims *dims,
-                        float epsilon)
+check_state_matches(struct matmul_test_state *state,
+                    const struct matmul_dims *dims,
+                    float epsilon)
 {
         THFloatTensor_addmm(state->th_c,
                             0.0,
@@ -286,10 +313,8 @@ check_result_against_th(struct matmul_test_state *state,
         for (uint32_t i = 0;
              i < dims->m*dims->n;
              ++i) {
-                /* printf("%.5f\n", state->th_c->storage->data[i]); */
-                /* printf("%.5f\n", state->c.data[i]); */
-                /* printf("\n"); */
-                float diff = state->th_c->storage->data[i] - state->c.data[i];
+                float *th_c_data = get_th_tensor_data(state->th_c);
+                const float diff = (th_c_data[i] - state->c.data[i]);
                 MIN_UNIT_ASSERT(fabs(diff) < epsilon,
                                 "ROT_matmul mismatches TH_addmm at index %d\n",
                                 i);
@@ -308,7 +333,7 @@ static MIN_UNIT_TEST_FUNC(test_matmul_small)
 {
         uint8_t memory[512*1024];
         struct matmul_test_state state;
-        struct matmul_dims dims =
+        struct matmul_dims dims;
                 setup_matmul_test_state_small(&state, memory, sizeof(memory));
 
         state.c.tensor = ROT_matmul(state.c.tensor,
@@ -318,7 +343,7 @@ static MIN_UNIT_TEST_FUNC(test_matmul_small)
                         "NULL returned from ROT_matmul, expected "
                         "rot_tensor\n");
 
-        check_result_against_th(&state, &dims, FLT_EPSILON);
+        check_state_matches(&state, &dims, FLT_EPSILON);
 
         THFloatTensor_free(state.th_a);
         THFloatTensor_free(state.th_b);
@@ -328,7 +353,7 @@ static MIN_UNIT_TEST_FUNC(test_matmul_small)
 static MIN_UNIT_TEST_FUNC(test_matmul_small_cudnn)
 {
         const size_t memory_size = 1024*1024*1024;
-        uint8_t *memory = malloc(memory_size);
+        uint8_t *memory = (uint8_t *)malloc(memory_size);
         struct matmul_test_state state;
 
         int32_t device_id;
@@ -416,7 +441,7 @@ static MIN_UNIT_TEST_FUNC(test_matmul_small_cudnn)
                               cudaMemcpyDeviceToHost);
         assert(cuda_err == cudaSuccess);
 
-        check_result_against_th(&state, &dims, 1024*FLT_EPSILON);
+        check_state_matches(&state, &dims, 1024*FLT_EPSILON);
 
         cuda_err = cudaFree(cuda_memory);
         assert(cuda_err == cudaSuccess);
@@ -424,28 +449,30 @@ static MIN_UNIT_TEST_FUNC(test_matmul_small_cudnn)
         free(memory);
 }
 
-static MIN_UNIT_TEST_FUNC(test_matmul_small_miopen)
-{
-}
-
 /**
  * test_matmul_small_perf() - Test for speed for small matrix multiplication.
  *
  * Pass criteria: the ROT_matmul() implementation should be faster than
  * third-party ML library matrix-multiply implementations for small matrices
- * (with each dimension < 128) of arbitrary sizes.
+ * (with each dimension < 4096) of arbitrary sizes.
  */
 static MIN_UNIT_TEST_FUNC(test_matmul_small_perf)
 {
-        uint8_t memory[512*1024];
-        struct matmul_test_state state;
-        setup_matmul_test_state_small(&state, memory, sizeof(memory));
+        const size_t memory_size = 1024*1024*1024;
+        uint8_t *memory = (uint8_t *)malloc(memory_size);
+        assert(memory != NULL);
+        struct matmul_dims dims = {.n = rand_dim(4096),
+                                   .m = rand_dim(4096),
+                                   .k = rand_dim(4096)};
 
         struct timeval start;
         get_and_check_time_of_day(&start);
 
+        struct matmul_test_state state;
+        setup_matmul_test_state(&state, memory, memory_size, &dims);
+
         for (uint32_t i = 0;
-             i < 256;
+             i < 16;
              ++i) {
                 THFloatTensor_addmm(state.th_c,
                                     0.0,
@@ -454,6 +481,7 @@ static MIN_UNIT_TEST_FUNC(test_matmul_small_perf)
                                     state.th_a,
                                     state.th_b);
         }
+        printf("Done TH!\n");
 
         struct timeval end;
         get_and_check_time_of_day(&end);
@@ -463,7 +491,7 @@ static MIN_UNIT_TEST_FUNC(test_matmul_small_perf)
         get_and_check_time_of_day(&start);
 
         for (uint32_t i = 0;
-             i < 256;
+             i < 16;
              ++i) {
                 state.c.tensor = ROT_matmul(state.c.tensor,
                                             state.a.tensor,
@@ -481,6 +509,8 @@ static MIN_UNIT_TEST_FUNC(test_matmul_small_perf)
                         "ROT performance (%.5f) below that of TH (%.5f)\n",
                         rot_elapsed_sec,
                         th_elapsed_sec);
+
+        free(memory);
 }
 
 /**
@@ -497,7 +527,9 @@ int main(void)
 {
         run_test(test_matmul_small);
         run_test(test_matmul_small_cudnn);
+#ifdef PLATFORM_MIOPEN
         run_test(test_matmul_small_miopen);
+#endif /* PLATFORM_MIOPEN */
         run_test(test_matmul_small_perf);
 
         printf("All tests passed!\n");

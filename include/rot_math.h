@@ -20,6 +20,7 @@
 #define ROT_MATH_H
 
 #include "rot_arena.h"
+#include "rot_platform.h"
 #include <stdint.h>
 
 typedef struct rot_tensor *rot_tensor_t;
@@ -30,12 +31,14 @@ typedef struct rot_tensor *rot_tensor_t;
  * @arena: Memory arena to allocate tensor from.
  * @num_dims: Number of dimensions of the tensor to allocate.
  * @dims: Size of each dimension of the allocated tensor.
+ * @backend: The backend used for the tensor.
  *
  * Returns NULL on error.
  */
 rot_tensor_t ROT_create_tensor(rot_arena_t arena,
                                uint32_t num_dims,
-                               const size_t *dims);
+                               const size_t *dims,
+                               enum rot_backend backend);
 
 /**
  * ROT_matmul()
@@ -67,9 +70,22 @@ rot_tensor_t ROT_matmul(rot_tensor_t result,
                         const rot_tensor_t b);
 
 /**
- * ROT_tensor_get_data() - Returns a pointer to the float data in tensor `a`.
+ * ROT_tensor_get_data() - Returns a pointer to the float data in `tensor`.
  * @tensor: A tensor.
  */
 float *ROT_tensor_get_data(rot_tensor_t tensor);
+
+/**
+ * ROT_tensor_get_dims() - Returns a pointer to the dimensions in `tensor`.
+ * @tensor: A tensor.
+ */
+const size_t *ROT_tensor_get_dims(rot_tensor_t tensor);
+
+/**
+ * ROT_tensor_get_size() - Returns the size in bytes of the data pointed to by
+ * `tensor.data`.
+ * @tensor: A tensor.
+ */
+size_t ROT_tensor_get_size(rot_tensor_t tensor);
 
 #endif /* ROT_MATH_H */

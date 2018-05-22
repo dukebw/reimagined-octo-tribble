@@ -16,26 +16,13 @@
  * You should have received a copy of the GNU General Public License along with
  * ROT ML Library. If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef ERROR_STOPIF_H
-#define ERROR_STOPIF_H
+#ifndef MI_OPEN_H
+#define MI_OPEN_H
 
-#include <stdbool.h>
-#include <stdio.h>
+#include "rot_math.h"
 
-/**
- * stopif() - Stops the program and prints `msg_format_str` if `assertion` is
- * true, else does nothing.
- * @assertion: Statement that must be true, otherwise the program stops.
- * @msg_format_str: printf format string to be printed if `assertion` is
- * triggered.
- */
-void stopif(bool assertion, const char *msg_format_str, ...);
+rot_tensor_t matmul_roc(rot_tensor_t result,
+                        const rot_tensor_t a,
+                        const rot_tensor_t b);
 
-/**
- * stopif_set_error_log() - Set the error log file to be printed to upon
- * program halt.
- * @error_log: Log file.
- */
-void stopif_set_error_log(FILE *error_log);
-
-#endif /* ERROR_STOPIF_H */
+#endif /* MI_OPEN_H */

@@ -22,7 +22,7 @@
 
 static FILE *stopif_error_log;
 
-void stopif(bool assertion, char *msg_format_str, ...)
+void stopif(bool assertion, const char *msg_format_str, ...)
 {
         if (assertion) {
                 va_list args;
