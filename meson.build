@@ -1,7 +1,7 @@
 project('rot-ml-library', 'c')
 
-cublas_dep = dependency('cublas')
-cudart_dep = dependency('cudart')
+cublas_dep = dependency('cublas', required : false)
+cudart_dep = dependency('cudart', required : false)
 gsl_dep = dependency('gsl')
 hip_hcc_dep = dependency('hip_hcc', required : false)
 openblas_dep = dependency('openblas')
@@ -18,7 +18,13 @@ lib_src = ['math/rot_math.c',
            'memory/rot_arena.c']
 
 if hip_hcc_dep.found()
-        lib_src.append('platform/miopen.c')
+        lib_src += ['platform/miopen.c']
+        add_global_arguments('-DPLATFORM_MIOPEN=1', language : 'c')
+endif
+
+if cublas_dep.found()
+        lib_src += ['platform/cudnn.c']
+        add_global_arguments('-DPLATFORM_CUDNN=1', language : 'c')
 endif
 
 lib = static_library('rot_ml',
@@ -33,7 +39,11 @@ test_math_src = ['tests/test_math.c',
                  'error/log_error.c']
 
 if hip_hcc_dep.found()
-        test_math_src.append('tests/test_miopen.c')
+        test_math_src += ['tests/test_miopen.c']
+endif
+
+if cublas_dep.found()
+        test_math_src += ['tests/test_cudnn.c']
 endif
 
 test_math = executable('test_math',

@@ -16,13 +16,11 @@
  * You should have received a copy of the GNU General Public License along with
  * ROT ML Library. If not, see <http://www.gnu.org/licenses/>.
  */
-#include "rot_math.h"
-#include "platform/cudnn.h"
+#include "tests/test_math.h"
+#include "tests/test_cudnn.h"
 #include "tests/min_unit.h"
+#include "rot_math.h"
 
-/* TODO(brendan): move the cuda includes to platform. */
-#include "cuda_runtime.h"
-#include "cublas_v2.h"
 #include "gsl/gsl_rng.h"
 #include "gsl/gsl_randist.h"
 #include "TH/TH.h"
@@ -33,44 +31,6 @@
 #include <stdlib.h>
 #include <sys/time.h>
 #include <unistd.h>
-
-/**
- * struct matmul_dims - Dimensions describing a matrix multiply of an NxM
- * matrix by an MxK matrix.
- */
-struct matmul_dims {
-        size_t n;
-        size_t m;
-        size_t k;
-};
-
-/**
- * struct tensor_data - Convenience wrapper to store a tensor and a raw pointer
- * to its data.
- * @tensor: A ROT tensor.
- * @data: A pointer to the data in `tensor`.
- */
-struct tensor_data {
-        rot_tensor_t tensor;
-        float *data;
-};
-
-/**
- * struct matmul_test_state - All of the test state needed for ROT_matmul
- * tests.
- * @a, @b, @c: ROT matrices.
- * @th_a, @th_b, @th_c: TH matrices.
- * @arena: Memory arena used to allocate the ROT matrices.
- */
-struct matmul_test_state {
-        struct tensor_data a;
-        struct tensor_data b;
-        struct tensor_data c;
-        THFloatTensor *th_a;
-        THFloatTensor *th_b;
-        THFloatTensor *th_c;
-        rot_arena_t arena;
-};
 
 /**
  * get_th_tensor_data() - Get float pointer to data in th_tensor.
@@ -202,20 +162,10 @@ init_data_uniform(float *data, gsl_rng *rng, const size_t *dims)
         return num_elems;
 }
 
-/**
- * setup_matmul_test_state() - A setup function that runs before all tests of
- * `ROT_matmul`.
- * @state: The test state struct, holding all allocated memory and other state
- * that needs to be setup before each matmul test.
- * @mem: A contiguous buffer `mem_bytes` in size.
- * @mem_bytes: Size in bytes of `mem`.
- * @dims: Dimensions N, M and K of the matrices.
- */
-static void
-setup_matmul_test_state(struct matmul_test_state *state,
-                        uint8_t *mem,
-                        size_t mem_bytes,
-                        const struct matmul_dims *dims)
+void setup_matmul_test_state(struct matmul_test_state *state,
+                             uint8_t *mem,
+                             size_t mem_bytes,
+                             const struct matmul_dims *dims)
 {
         state->arena = ROT_arena_new(mem, mem_bytes);
         assert(state->arena != NULL);
@@ -248,11 +198,7 @@ setup_matmul_test_state(struct matmul_test_state *state,
         gsl_rng_free(rng);
 }
 
-/**
- * rand_dim() - Returns a random dimension in [1, `max_dim`).
- */
-static size_t
-rand_dim(uint32_t max_dim)
+size_t rand_dim(uint32_t max_dim)
 {
         return (rand() % max_dim) + 1;
 }
@@ -282,23 +228,7 @@ get_elapsed_sec(struct timeval start, struct timeval end)
                 (end.tv_usec - start.tv_usec)/1e6);
 }
 
-/**
- * check_state_matches() - Verifies that the test state contained in `state` is
- * consistent, i.e. that the computed result C is correct.
- *
- * @state: The test state struct, which already holds a result in `state->c`.
- * `state->th_c` is updated by this function.
- * @dims: Holds the dimensions m, n, k of A, B and C.
- * @epsilon: The maximum value by which the computed result C is allowed to
- * differ from the ground truth and still be considered a PASS.
- *
- * TODO(brendan): Should epsilon be a fraction of the magnitude of the ground
- * truth, rather than an absolute value?
- *
- * The result C = A*B computed by ROT, is checked against the ground truth
- * result computed by TH.
- */
-static void
+void
 check_state_matches(struct matmul_test_state *state,
                     const struct matmul_dims *dims,
                     float epsilon)
@@ -348,105 +278,6 @@ static MIN_UNIT_TEST_FUNC(test_matmul_small)
         THFloatTensor_free(state.th_a);
         THFloatTensor_free(state.th_b);
         THFloatTensor_free(state.th_c);
-}
-
-static MIN_UNIT_TEST_FUNC(test_matmul_small_cudnn)
-{
-        const size_t memory_size = 1024*1024*1024;
-        uint8_t *memory = (uint8_t *)malloc(memory_size);
-        struct matmul_test_state state;
-
-        int32_t device_id;
-        cudaError_t cuda_err = cudaGetDevice(&device_id);
-        assert(cuda_err == cudaSuccess);
-
-        struct cudaDeviceProp device_prop;
-        cuda_err = cudaGetDeviceProperties(&device_prop, 0);
-        assert(cuda_err == cudaSuccess);
-
-        printf("Device id in use: %d\n%s: Compute capability: %d.%d\n\n",
-               device_id,
-               device_prop.name,
-               device_prop.major,
-               device_prop.minor);
-
-        size_t limit;
-        cuda_err = cudaDeviceGetLimit(&limit, cudaLimitMallocHeapSize);
-        assert(cuda_err == cudaSuccess);
-
-        const uint32_t max_dim = sqrt(limit/sizeof(float));
-        struct matmul_dims dims = {.n = rand_dim(max_dim),
-                                   .m = rand_dim(max_dim),
-                                   .k = rand_dim(max_dim)};
-
-        setup_matmul_test_state(&state, memory, memory_size, &dims);
-
-        printf("CUDA GPU alloc limit: %lu\n", limit);
-
-        /* NOTE(brendan): major version 2 corresponds to Fermi. */
-        assert(device_prop.major >= 2);
-
-        const size_t CUDA_MEM_BYTES = 1024*1024*1024;
-        size_t a_bytes = sizeof(float)*dims.m*dims.k;
-        size_t b_bytes = sizeof(float)*dims.k*dims.n;
-        size_t c_bytes = sizeof(float)*dims.m*dims.n;
-        size_t required_bytes = a_bytes + b_bytes + c_bytes;
-        assert(CUDA_MEM_BYTES >= required_bytes);
-
-        void *cuda_memory;
-        cuda_err = cudaMalloc(&cuda_memory, CUDA_MEM_BYTES);
-        assert(cuda_err == cudaSuccess);
-
-        float *d_A = (float *)cuda_memory;
-        float *d_B = (float *)((uint8_t *)cuda_memory + a_bytes);
-        float *d_C = (float *)((uint8_t *)d_B + b_bytes);
-
-        cuda_err = cudaMemcpy(d_A,
-                              state.a.data,
-                              a_bytes,
-                              cudaMemcpyHostToDevice);
-        assert(cuda_err == cudaSuccess);
-
-        cuda_err = cudaMemcpy(d_B,
-                              state.b.data,
-                              b_bytes,
-                              cudaMemcpyHostToDevice);
-        assert(cuda_err == cudaSuccess);
-
-        cublasHandle_t handle;
-        cublasStatus_t cublas_status = cublasCreate(&handle);
-        assert(cublas_status == CUBLAS_STATUS_SUCCESS);
-
-        const float alpha = 1.0;
-        const float beta = 0.0;
-        cublas_status = cublasSgemm(handle,
-                                    CUBLAS_OP_N,
-                                    CUBLAS_OP_N,
-                                    dims.n,
-                                    dims.m,
-                                    dims.k,
-                                    &alpha,
-                                    d_B,
-                                    dims.n,
-                                    d_A,
-                                    dims.k,
-                                    &beta,
-                                    d_C,
-                                    dims.n);
-        assert(cublas_status == CUBLAS_STATUS_SUCCESS);
-
-        cuda_err = cudaMemcpy(state.c.data,
-                              d_C,
-                              c_bytes,
-                              cudaMemcpyDeviceToHost);
-        assert(cuda_err == cudaSuccess);
-
-        check_state_matches(&state, &dims, 1024*FLT_EPSILON);
-
-        cuda_err = cudaFree(cuda_memory);
-        assert(cuda_err == cudaSuccess);
-
-        free(memory);
 }
 
 /**
@@ -526,7 +357,9 @@ run_test(min_unit_test_func test)
 int main(void)
 {
         run_test(test_matmul_small);
+#ifdef PLATFORM_CUDNN
         run_test(test_matmul_small_cudnn);
+#endif /* PLATFORM_CUDNN */
 #ifdef PLATFORM_MIOPEN
         run_test(test_matmul_small_miopen);
 #endif /* PLATFORM_MIOPEN */

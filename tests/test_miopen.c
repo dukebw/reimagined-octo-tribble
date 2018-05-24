@@ -19,6 +19,7 @@
 #include "tests/test_miopen.h"
 
 #include "hip/hip_runtime_api.h"
+#include <stdint.h>
 
 static rot_tensor_t
 init_roc_tensor(rot_arena_t arena_roc,
@@ -131,4 +132,3 @@ MIN_UNIT_TEST_FUNC(test_matmul_small_miopen)
 
         free(memory);
 }
-
