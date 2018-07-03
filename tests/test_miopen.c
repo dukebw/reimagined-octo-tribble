@@ -22,15 +22,14 @@
 #include <stdint.h>
 
 static rot_tensor_t
-init_roc_tensor(rot_arena_t arena_roc,
+init_roc_tensor(rot_arena_t arena_gpu,
                 const struct tensor_data t,
-                hipStream_t stream,
-                size_t limit)
+                hipStream_t stream)
 {
         const size_t *dims = ROT_tensor_get_dims(t.tensor);
         assert(dims != NULL);
 
-        rot_tensor_t a_tens = ROT_create_tensor(arena_roc,
+        rot_tensor_t a_tens = ROT_create_tensor(arena_gpu,
                                                 2,
                                                 dims,
                                                 ROT_BACKEND_ROC);
@@ -72,33 +71,26 @@ MIN_UNIT_TEST_FUNC(test_matmul_small_miopen)
         assert(hip_err == hipSuccess);
 
         constexpr uint32_t num_blocks = 3;
-        void *roc_mem_blocks[num_blocks];
+        void *gpu_mem_blocks[num_blocks];
         for (uint32_t block_i = 0;
              block_i < num_blocks;
              ++block_i) {
-                hipError_t hip_err = hipMalloc(roc_mem_blocks + block_i,
+                hipError_t hip_err = hipMalloc(gpu_mem_blocks + block_i,
                                                limit);
                 assert(hip_err == hipSuccess);
         }
 
-        rot_arena_t arena_roc = ROT_arena_roc_new(state.arena,
-                                                  roc_mem_blocks,
+        rot_arena_t arena_gpu = ROT_arena_gpu_new(state.arena,
+                                                  gpu_mem_blocks,
                                                   limit,
                                                   num_blocks);
-        assert(arena_roc != NULL);
+        assert(arena_gpu != NULL);
 
-        rot_tensor_t a_tens = init_roc_tensor(arena_roc,
-                                              state.a,
-                                              stream,
-                                              limit);
-
-        rot_tensor_t b_tens = init_roc_tensor(arena_roc,
-                                              state.b,
-                                              stream,
-                                              limit);
+        rot_tensor_t a_tens = init_roc_tensor(arena_gpu, state.a, stream);
+        rot_tensor_t b_tens = init_roc_tensor(arena_gpu, state.b, stream);
 
         const size_t mn_dims[] = {dims.m, dims.n};
-        rot_tensor_t c_tens = ROT_create_tensor(arena_roc,
+        rot_tensor_t c_tens = ROT_create_tensor(arena_gpu,
                                                 2,
                                                 mn_dims,
                                                 ROT_BACKEND_ROC);
@@ -123,7 +115,7 @@ MIN_UNIT_TEST_FUNC(test_matmul_small_miopen)
         for (uint32_t block_i = 0;
              block_i < num_blocks;
              ++block_i) {
-                hip_err = hipFree(roc_mem_blocks[block_i]);
+                hip_err = hipFree(gpu_mem_blocks[block_i]);
                 assert(hip_err == hipSuccess);
         }
 

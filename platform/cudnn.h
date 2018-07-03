@@ -16,4 +16,16 @@
  * You should have received a copy of the GNU General Public License along with
  * ROT ML Library. If not, see <http://www.gnu.org/licenses/>.
  */
-#include "cuda_runtime.h"
+#ifndef CUDNN_H
+#define CUDNN_H
+
+#include "rot_math.h"  /* for rot_tensor_t */
+
+/**
+ * matmul_cuda() - Matmul on NVIDIA hardware.
+ */
+rot_tensor_t matmul_cuda(rot_tensor_t result,
+                         const rot_tensor_t a,
+                         const rot_tensor_t b);
+
+#endif /* CUDNN_H */

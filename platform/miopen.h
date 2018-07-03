@@ -21,6 +21,9 @@
 
 #include "rot_math.h"
 
+/**
+ * matmul_roc() - Matrix multiplication using ROCm backend.
+ */
 rot_tensor_t matmul_roc(rot_tensor_t result,
                         const rot_tensor_t a,
                         const rot_tensor_t b);

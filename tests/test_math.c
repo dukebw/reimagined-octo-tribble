@@ -17,20 +17,22 @@
  * ROT ML Library. If not, see <http://www.gnu.org/licenses/>.
  */
 #include "tests/test_math.h"
-#include "tests/test_cudnn.h"
-#include "tests/min_unit.h"
-#include "rot_math.h"
+#include "tests/test_cudnn.h" /* for test_matmul_small_cudnn */
+#include "tests/min_unit.h"   /* for MIN_UNIT_ASSERT, min_unit_run_test */
+#include "rot_math.h"         /* for ROT_matmul, ROT_create_tensor, ... */
+#include "rot_platform.h"     /* for ROT_BACKEND_CPU */
 
-#include "gsl/gsl_rng.h"
-#include "gsl/gsl_randist.h"
-#include "TH/TH.h"
+#include "gsl/gsl_rng.h"      /* for gsl_rng, gsl_rng_alloc, gsl_rng_free */
+#include "gsl/gsl_randist.h"  /* for gsl_ran_flat */
+#include "TH/THStorage.h"     /* for THFloatStorage_data, THFloatStorage */
 
-#include <assert.h>
-#include <float.h>
-#include <math.h>
-#include <stdlib.h>
-#include <sys/time.h>
-#include <unistd.h>
+#include <assert.h>           /* for assert */
+#include <float.h>            /* for FLT_EPSILON */
+#include <math.h>             /* for fabs */
+#include <stdio.h>            /* for printf */
+#include <stdlib.h>           /* for size_t, NULL, free, malloc, rand, srand */
+#include <string.h>           /* for memcpy */
+#include <sys/time.h>         /* for timeval, gettimeofday */
 
 /**
  * get_th_tensor_data() - Get float pointer to data in th_tensor.

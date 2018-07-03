@@ -17,19 +17,54 @@
  * ROT ML Library. If not, see <http://www.gnu.org/licenses/>.
  */
 #include "tests/test_cudnn.h"
-#include "platform/cudnn.h"
-#include "tests/test_math.h"
+#include "rot_arena.h"         /* for rot_arena_t */
+#include "rot_math.h"          /* for ROT_create_tensor, ROT_tensor_get_data */
+#include "rot_platform.h"      /* for ROT_BACKEND_CUDA */
+#include "tests/test_math.h"   /* for rand_dim, matmul_dims, tensor_data */
 
-#include "cuda_runtime.h"
-#include "cublas_v2.h"
-#include <assert.h>
+#include "cuda_runtime_api.h"  /* for cudaMemcpy, cudaDeviceGetLimit, ... */
+#include "driver_types.h"      /* for cudaSuccess, cudaDeviceProp, ... */
+
+#include <assert.h>            /* for assert */
+#include <float.h>             /* for FLT_EPSILON */
+#include <math.h>              /* for sqrt */
 #include <stdint.h>
+#include <stdio.h>             /* for size_t, print, NULL */
+#include <stdlib.h>            /* for free, malloc */
+
+static rot_tensor_t
+init_cuda_tensor(rot_arena_t arena_gpu,
+                 const struct tensor_data t,
+                 cudaStream_t stream)
+{
+        const size_t *dims = ROT_tensor_get_dims(t.tensor);
+        assert(dims != NULL);
+
+        rot_tensor_t a_tens = ROT_create_tensor(arena_gpu,
+                                                2,
+                                                dims,
+                                                ROT_BACKEND_CUDA);
+        assert(a_tens != NULL);
+
+        float *a_data = ROT_tensor_get_data(a_tens);
+        assert(a_data != NULL);
+
+        size_t t_size = ROT_tensor_get_size(t.tensor);
+        cudaError_t cuda_err = cudaMemcpyAsync(a_data,
+                                               t.data,
+                                               t_size,
+                                               cudaMemcpyHostToDevice,
+                                               stream);
+        assert(cuda_err == cudaSuccess);
+
+        return a_tens;
+}
 
 MIN_UNIT_TEST_FUNC(test_matmul_small_cudnn)
 {
         const size_t memory_size = 1024*1024*1024;
         uint8_t *memory = (uint8_t *)malloc(memory_size);
-        struct matmul_test_state state;
+        assert(memory != NULL);
 
         int32_t device_id;
         cudaError_t cuda_err = cudaGetDevice(&device_id);
@@ -54,72 +89,65 @@ MIN_UNIT_TEST_FUNC(test_matmul_small_cudnn)
                                    .m = rand_dim(max_dim),
                                    .k = rand_dim(max_dim)};
 
+        struct matmul_test_state state;
         setup_matmul_test_state(&state, memory, memory_size, &dims);
+
+        cudaStream_t stream;
+        cuda_err = cudaStreamCreate(&stream);
+        assert(cuda_err == cudaSuccess);
 
         printf("CUDA GPU alloc limit: %lu\n", limit);
 
         /* NOTE(brendan): major version 2 corresponds to Fermi. */
         assert(device_prop.major >= 2);
 
-        const size_t CUDA_MEM_BYTES = 1024*1024*1024;
-        size_t a_bytes = sizeof(float)*dims.m*dims.k;
-        size_t b_bytes = sizeof(float)*dims.k*dims.n;
-        size_t c_bytes = sizeof(float)*dims.m*dims.n;
-        size_t required_bytes = a_bytes + b_bytes + c_bytes;
-        assert(CUDA_MEM_BYTES >= required_bytes);
+        constexpr uint32_t num_blocks = 3;
+        void *gpu_mem_blocks[num_blocks];
+        for (uint32_t block_i = 0;
+             block_i < num_blocks;
+             ++block_i) {
+                cuda_err = cudaMalloc(gpu_mem_blocks + block_i, limit);
+                assert(cuda_err == cudaSuccess);
+        }
 
-        void *cuda_memory;
-        cuda_err = cudaMalloc(&cuda_memory, CUDA_MEM_BYTES);
-        assert(cuda_err == cudaSuccess);
+        rot_arena_t arena_gpu = ROT_arena_gpu_new(state.arena,
+                                                  gpu_mem_blocks,
+                                                  limit,
+                                                  num_blocks);
+        assert(arena_gpu != NULL);
 
-        float *d_A = (float *)cuda_memory;
-        float *d_B = (float *)((uint8_t *)cuda_memory + a_bytes);
-        float *d_C = (float *)((uint8_t *)d_B + b_bytes);
+        rot_tensor_t a_tens = init_cuda_tensor(arena_gpu, state.a, stream);
+        rot_tensor_t b_tens = init_cuda_tensor(arena_gpu, state.b, stream);
 
-        cuda_err = cudaMemcpy(d_A,
-                              state.a.data,
-                              a_bytes,
-                              cudaMemcpyHostToDevice);
-        assert(cuda_err == cudaSuccess);
+        const size_t mn_dims[] = {dims.m, dims.n};
+        rot_tensor_t c_tens = ROT_create_tensor(arena_gpu,
+                                                2,
+                                                mn_dims,
+                                                ROT_BACKEND_CUDA);
+        assert(c_tens != NULL);
 
-        cuda_err = cudaMemcpy(d_B,
-                              state.b.data,
-                              b_bytes,
-                              cudaMemcpyHostToDevice);
-        assert(cuda_err == cudaSuccess);
+        c_tens = ROT_matmul(c_tens, a_tens, b_tens);
+        assert(c_tens != NULL);
 
-        cublasHandle_t handle;
-        cublasStatus_t cublas_status = cublasCreate(&handle);
-        assert(cublas_status == CUBLAS_STATUS_SUCCESS);
-
-        /* TODO(brendan): Turn this into a ROT_matmul call. */
-        const float alpha = 1.0;
-        const float beta = 0.0;
-        cublas_status = cublasSgemm(handle,
-                                    CUBLAS_OP_N,
-                                    CUBLAS_OP_N,
-                                    dims.n,
-                                    dims.m,
-                                    dims.k,
-                                    &alpha,
-                                    d_B,
-                                    dims.n,
-                                    d_A,
-                                    dims.k,
-                                    &beta,
-                                    d_C,
-                                    dims.n);
-        assert(cublas_status == CUBLAS_STATUS_SUCCESS);
+        float *c_dev = (float *)ROT_tensor_get_data(c_tens);
+        assert(c_dev != NULL);
 
         cuda_err = cudaMemcpy(state.c.data,
-                              d_C,
-                              c_bytes,
+                              c_dev,
+                              ROT_tensor_get_size(state.c.tensor),
                               cudaMemcpyDeviceToHost);
         assert(cuda_err == cudaSuccess);
 
         check_state_matches(&state, &dims, 1024*FLT_EPSILON);
 
-        cuda_err = cudaFree(cuda_memory);
+        for (uint32_t block_i = 0;
+             block_i < num_blocks;
+             ++block_i) {
+                cuda_err = cudaFree(gpu_mem_blocks[block_i]);
+                assert(cuda_err == cudaSuccess);
+        }
+
+        cuda_err = cudaStreamDestroy(stream);
         assert(cuda_err == cudaSuccess);
 
         free(memory);

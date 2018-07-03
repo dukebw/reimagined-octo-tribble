@@ -17,11 +17,11 @@
  * ROT ML Library. If not, see <http://www.gnu.org/licenses/>.
  */
 #include "rot_math.h"
-#include "error/log_error.h"
-#include "platform/math.h"
+#include "error/log_error.h"  /* for LOG_ERROR, LOG_UNSUPPORTED, LOG_NULL */
+#include "platform/cudnn.h"   /* for matmul_cuda */
+#include "platform/math.h"    /* for matmul_roc */
 
-#include "cblas.h"
-#include <stdlib.h>
+#include "cblas.h"            /* for cblas_sgemm, CblasNoTrans, ... */
 
 struct rot_cpu_tensor {
         /**
@@ -31,7 +31,7 @@ struct rot_cpu_tensor {
         float data[];
 };
 
-struct rot_roc_tensor {
+struct rot_gpu_tensor {
         void *data;
 };
 
@@ -54,7 +54,7 @@ struct rot_tensor {
         uint32_t num_dims;
         union {
                 struct rot_cpu_tensor cpu;
-                struct rot_roc_tensor roc;
+                struct rot_gpu_tensor gpu;
         };
 };
 
@@ -74,7 +74,9 @@ rot_tensor_t ROT_create_tensor(rot_arena_t arena,
                 return NULL;
         }
 
-        if ((backend != ROT_BACKEND_CPU) && (backend != ROT_BACKEND_ROC)) {
+        if ((backend != ROT_BACKEND_CPU) &&
+            (backend != ROT_BACKEND_ROC) &&
+            (backend != ROT_BACKEND_CUDA)) {
                 LOG_UNSUPPORTED();
                 return NULL;
         }
@@ -126,11 +128,11 @@ rot_tensor_t ROT_create_tensor(rot_arena_t arena,
 
         result->num_dims = num_dims;
 
-        if (backend == ROT_BACKEND_ROC) {
-                result->roc.data = ROT_arena_malloc(arena,
+        if ((backend == ROT_BACKEND_ROC) || (backend == ROT_BACKEND_CUDA)) {
+                result->gpu.data = ROT_arena_malloc(arena,
                                                     data_bytes,
-                                                    ROT_BACKEND_ROC);
-                if (result->roc.data == NULL)
+                                                    backend);
+                if (result->gpu.data == NULL)
                         return NULL;
         }
 
@@ -190,11 +192,14 @@ rot_tensor_t ROT_matmul(rot_tensor_t result,
                 return NULL;
         }
 
-        if (a->backend == ROT_BACKEND_CPU) {
+        switch (a->backend) {
+        case ROT_BACKEND_CPU:
                 return matmul_cpu(result, a, b);
-        } else if (a->backend == ROT_BACKEND_ROC) {
+        case ROT_BACKEND_CUDA:
+                return matmul_cuda(result, a, b);
+        case ROT_BACKEND_ROC:
                 return matmul_roc(result, a, b);
-        } else {
+        default:
                 LOG_UNSUPPORTED();
                 return NULL;
         }
@@ -202,11 +207,13 @@ rot_tensor_t ROT_matmul(rot_tensor_t result,
 
 float *ROT_tensor_get_data(rot_tensor_t tensor)
 {
-        if (tensor->backend == ROT_BACKEND_CPU) {
+        switch (tensor->backend) {
+        case ROT_BACKEND_CPU:
                 return tensor->cpu.data;
-        } else if (tensor->backend == ROT_BACKEND_ROC) {
-                return (float *)tensor->roc.data;
-        } else {
+        case ROT_BACKEND_CUDA:
+        case ROT_BACKEND_ROC:
+                return (float *)tensor->gpu.data;
+        default:
                 LOG_UNSUPPORTED();
                 return NULL;
         }

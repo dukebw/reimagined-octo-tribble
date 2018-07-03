@@ -16,10 +16,12 @@
  * You should have received a copy of the GNU General Public License along with
  * ROT ML Library. If not, see <http://www.gnu.org/licenses/>.
  */
-#include "rot_math.h"
-#include "rot_arena.h"
+#include "rot_math.h"     /* for rot_tensor_t */
+#include "rot_arena.h"    /* for rot_arena_t */
 
-#include "TH/TH.h"
+#include "TH/THTensor.h"  /* for THFloatTensor */
+#include <stddef.h>       /* for size_t */
+#include <stdint.h>       /* for uint32_t, uint8_t */
 
 /**
  * struct matmul_dims - Dimensions describing a matrix multiply of an NxM
