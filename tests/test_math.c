@@ -16,60 +16,40 @@
  * You should have received a copy of the GNU General Public License along with
  * ROT ML Library. If not, see <http://www.gnu.org/licenses/>.
  */
-#include "rot_math.h"
-#include "tests/min_unit.h"
-#include "TH/TH.h"
-#include "gsl/gsl_rng.h"
-#include "gsl/gsl_randist.h"
-#include "hip/hip_runtime_api.h"
+#include "tests/test_math.h"
+#include "tests/test_cudnn.h" /* for test_matmul_small_cudnn */
+#include "tests/min_unit.h"   /* for MIN_UNIT_ASSERT, min_unit_run_test */
+#include "rot_math.h"         /* for ROT_matmul, ROT_create_tensor, ... */
+#include "rot_platform.h"     /* for ROT_BACKEND_CPU */
 
-#include <assert.h>
-#include <float.h>
-#include <math.h>
-#include <stdlib.h>
-#include <sys/time.h>
+#include "gsl/gsl_rng.h"      /* for gsl_rng, gsl_rng_alloc, gsl_rng_free */
+#include "gsl/gsl_randist.h"  /* for gsl_ran_flat */
+#include "TH/THStorage.h"     /* for THFloatStorage_data, THFloatStorage */
+
+#include <assert.h>           /* for assert */
+#include <float.h>            /* for FLT_EPSILON */
+#include <math.h>             /* for fabs */
+#include <stdio.h>            /* for printf */
+#include <stdlib.h>           /* for size_t, NULL, free, malloc, rand, srand */
+#include <string.h>           /* for memcpy */
+#include <sys/time.h>         /* for timeval, gettimeofday */
 
 /**
- * struct matmul_dims - Dimensions describing a matrix multiply of an NxM
- * matrix by an MxK matrix.
+ * get_th_tensor_data() - Get float pointer to data in th_tensor.
+ *
+ * @th_tensor: TH tensor to get data for.
  */
-struct matmul_dims {
-        size_t n;
-        size_t m;
-        size_t k;
-};
+static float *
+get_th_tensor_data(const THFloatTensor *th_tensor)
+{
+        THFloatStorage* storage = THFloatTensor_storage(th_tensor);
+
+        return THFloatStorage_data(storage);
+}
 
 /**
- * struct tensor_data - Convenience wrapper to store a tensor and a raw pointer
- * to its data.
- * @tensor: A ROT tensor.
- * @data: A pointer to the data in `tensor`.
- */
-struct tensor_data {
-        rot_tensor_t tensor;
-        float *data;
-};
-
-/**
- * struct matmul_test_state - All of the test state needed for ROT_matmul
- * tests.
- * @a, @b, @c: ROT matrices.
- * @th_a, @th_b, @th_c: TH matrices.
- * @arena: Memory arena used to allocate the ROT matrices.
- */
-struct matmul_test_state {
-        struct tensor_data a;
-        struct tensor_data b;
-        struct tensor_data c;
-        THFloatTensor *th_a;
-        THFloatTensor *th_b;
-        THFloatTensor *th_c;
-        rot_arena_t arena;
-};
-
-/**
- * create_th_tensor() - Allocates a a TH matrix with dimensions given by
- * `dims`, and initializes said matrix with `data`.
+ * create_th_tensor() - Allocate a TH matrix with dimensions given by `dims`,
+ * and initialize said matrix with `data`.
  * @data: Data to initialize the TH matrix with.
  * @dims: [rows, columns] of the matrix.
  * @flat_size: Should be rows*columns.
@@ -83,7 +63,8 @@ create_th_tensor(float *data, const size_t *dims, size_t flat_size)
                                                                dims[1]);
         assert(th_tensor != NULL);
 
-        memcpy(th_tensor->storage->data, data, flat_size*sizeof(float));
+        float *tensor_data = get_th_tensor_data(th_tensor);
+        memcpy(tensor_data, data, flat_size*sizeof(float));
 
         return th_tensor;
 }
@@ -183,20 +164,10 @@ init_data_uniform(float *data, gsl_rng *rng, const size_t *dims)
         return num_elems;
 }
 
-/**
- * setup_matmul_test_state() - A setup function that runs before all tests of
- * `ROT_matmul`.
- * @state: The test state struct, holding all allocated memory and other state
- * that needs to be setup before each matmul test.
- * @mem: A contiguous buffer `mem_bytes` in size.
- * @mem_bytes: Size in bytes of `mem`.
- * @dims: Dimensions N, M and K of the matrices.
- */
-static void
-setup_matmul_test_state(struct matmul_test_state *state,
-                        uint8_t *mem,
-                        size_t mem_bytes,
-                        const struct matmul_dims *dims)
+void setup_matmul_test_state(struct matmul_test_state *state,
+                             uint8_t *mem,
+                             size_t mem_bytes,
+                             const struct matmul_dims *dims)
 {
         state->arena = ROT_arena_new(mem, mem_bytes);
         assert(state->arena != NULL);
@@ -229,6 +200,25 @@ setup_matmul_test_state(struct matmul_test_state *state,
         gsl_rng_free(rng);
 }
 
+size_t rand_dim(uint32_t max_dim)
+{
+        return (rand() % max_dim) + 1;
+}
+
+static struct matmul_dims
+setup_matmul_test_state_small(struct matmul_test_state *state,
+                              uint8_t *memory,
+                              size_t memory_bytes)
+{
+        struct matmul_dims dims = {.n = rand_dim(128),
+                                   .m = rand_dim(128),
+                                   .k = rand_dim(128)};
+
+        setup_matmul_test_state(state, memory, memory_bytes, &dims);
+
+        return dims;
+}
+
 /**
  * get_elapsed_sec() - Returns the elapsed time in seconds since `start`, until
  * `end`.
@@ -240,32 +230,7 @@ get_elapsed_sec(struct timeval start, struct timeval end)
                 (end.tv_usec - start.tv_usec)/1e6);
 }
 
-/**
- * rand_dim() - Returns a random dimension in [1, `max_dim`).
- */
-static size_t
-rand_dim(uint32_t max_dim)
-{
-        return (rand() % max_dim) + 1;
-}
-
-/**
- * check_state_matches() - Verifies that the test state contained in `state` is
- * consistent, i.e. that the computed result C is correct.
- *
- * @state: The test state struct, which already holds a result in `state->c`.
- * `state->th_c` is updated by this function.
- * @dims: Holds the dimensions m, n, k of A, B and C.
- * @epsilon: The maximum value by which the computed result C is allowed to
- * differ from the ground truth and still be considered a PASS.
- *
- * TODO(brendan): Should epsilon be a fraction of the magnitude of the ground
- * truth, rather than an absolute value?
- *
- * The result C = A*B computed by ROT, is checked against the ground truth
- * result computed by TH.
- */
-static void
+void
 check_state_matches(struct matmul_test_state *state,
                     const struct matmul_dims *dims,
                     float epsilon)
@@ -280,8 +245,8 @@ check_state_matches(struct matmul_test_state *state,
         for (uint32_t i = 0;
              i < dims->m*dims->n;
              ++i) {
-                const float diff = (state->th_c->storage->data[i] -
-                                    state->c.data[i]);
+                float *th_c_data = get_th_tensor_data(state->th_c);
+                const float diff = (th_c_data[i] - state->c.data[i]);
                 MIN_UNIT_ASSERT(fabs(diff) < epsilon,
                                 "ROT_matmul mismatches TH_addmm at index %d\n",
                                 i);
@@ -299,12 +264,9 @@ check_state_matches(struct matmul_test_state *state,
 static MIN_UNIT_TEST_FUNC(test_matmul_small)
 {
         uint8_t memory[512*1024];
-        struct matmul_dims dims = {.n = rand_dim(128),
-                                   .m = rand_dim(128),
-                                   .k = rand_dim(128)};
-
         struct matmul_test_state state;
-        setup_matmul_test_state(&state, memory, sizeof(memory), &dims);
+        struct matmul_dims dims;
+                setup_matmul_test_state_small(&state, memory, sizeof(memory));
 
         state.c.tensor = ROT_matmul(state.c.tensor,
                                     state.a.tensor,
@@ -318,122 +280,6 @@ static MIN_UNIT_TEST_FUNC(test_matmul_small)
         THFloatTensor_free(state.th_a);
         THFloatTensor_free(state.th_b);
         THFloatTensor_free(state.th_c);
-}
-
-static MIN_UNIT_TEST_FUNC(test_matmul_small_cudnn)
-{
-}
-
-static rot_tensor_t
-init_roc_tensor(rot_arena_t arena_roc,
-                const struct tensor_data t,
-                hipStream_t stream,
-                size_t limit)
-{
-        const size_t *dims = ROT_tensor_get_dims(t.tensor);
-        assert(dims != NULL);
-
-        rot_tensor_t a_tens = ROT_create_tensor(arena_roc,
-                                                2,
-                                                dims,
-                                                ROT_BACKEND_ROC);
-        assert(a_tens != NULL);
-
-        float *a_data = ROT_tensor_get_data(a_tens);
-        assert(a_data != NULL);
-
-        size_t t_size = ROT_tensor_get_size(t.tensor);
-        hipError_t hip_err = hipMemcpyHtoDAsync(a_data,
-                                                t.data,
-                                                t_size,
-                                                stream);
-        assert(hip_err == hipSuccess);
-
-        return a_tens;
-}
-
-static MIN_UNIT_TEST_FUNC(test_matmul_small_miopen)
-{
-        const size_t memory_size = 1024*1024*1024;
-        uint8_t *memory = (uint8_t *)malloc(memory_size);
-        assert(memory != NULL);
-
-        size_t limit;
-        hipError_t hip_err = hipDeviceGetLimit(&limit, hipLimitMallocHeapSize);
-        assert(hip_err == hipSuccess);
-
-        const uint32_t max_dim = sqrt(limit/sizeof(float));
-        struct matmul_dims dims = {.n = rand_dim(max_dim),
-                                   .m = rand_dim(max_dim),
-                                   .k = rand_dim(max_dim)};
-
-        struct matmul_test_state state;
-        setup_matmul_test_state(&state, memory, memory_size, &dims);
-
-        hipStream_t stream;
-        hip_err = hipStreamCreate(&stream);
-        assert(hip_err == hipSuccess);
-
-        constexpr uint32_t num_blocks = 3;
-        void *roc_mem_blocks[num_blocks];
-        for (uint32_t block_i = 0;
-             block_i < num_blocks;
-             ++block_i) {
-                hipError_t hip_err = hipMalloc(roc_mem_blocks + block_i,
-                                               limit);
-                assert(hip_err == hipSuccess);
-        }
-
-        rot_arena_t arena_roc = ROT_arena_roc_new(state.arena,
-                                                  roc_mem_blocks,
-                                                  limit,
-                                                  num_blocks);
-        assert(arena_roc != NULL);
-
-        rot_tensor_t a_tens = init_roc_tensor(arena_roc,
-                                              state.a,
-                                              stream,
-                                              limit);
-
-        rot_tensor_t b_tens = init_roc_tensor(arena_roc,
-                                              state.b,
-                                              stream,
-                                              limit);
-
-        const size_t mn_dims[] = {dims.m, dims.n};
-        rot_tensor_t c_tens = ROT_create_tensor(arena_roc,
-                                                2,
-                                                mn_dims,
-                                                ROT_BACKEND_ROC);
-        assert(c_tens != NULL);
-
-        hip_err = hipStreamSynchronize(stream);
-        assert(hip_err == hipSuccess);
-
-        c_tens = ROT_matmul(c_tens, a_tens, b_tens);
-        assert(c_tens != NULL);
-
-        float *c_dev = (float *)ROT_tensor_get_data(c_tens);
-        assert(c_dev != NULL);
-
-        hip_err = hipMemcpyDtoH(state.c.data,
-                                c_dev,
-                                ROT_tensor_get_size(state.c.tensor));
-        assert(hip_err == hipSuccess);
-
-        check_state_matches(&state, &dims, 1024*FLT_EPSILON);
-
-        for (uint32_t block_i = 0;
-             block_i < num_blocks;
-             ++block_i) {
-                hip_err = hipFree(roc_mem_blocks[block_i]);
-                assert(hip_err == hipSuccess);
-        }
-
-        hip_err = hipStreamDestroy(stream);
-        assert(hip_err == hipSuccess);
-
-        free(memory);
 }
 
 /**
@@ -513,8 +359,12 @@ run_test(min_unit_test_func test)
 int main(void)
 {
         run_test(test_matmul_small);
+#ifdef PLATFORM_CUDNN
         run_test(test_matmul_small_cudnn);
+#endif /* PLATFORM_CUDNN */
+#ifdef PLATFORM_MIOPEN
         run_test(test_matmul_small_miopen);
+#endif /* PLATFORM_MIOPEN */
         run_test(test_matmul_small_perf);
 
         printf("All tests passed!\n");

@@ -16,19 +16,16 @@
  * You should have received a copy of the GNU General Public License along with
  * ROT ML Library. If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef PLATFORM_MATH_H
-#define PLATFORM_MATH_H
+#ifndef CUDNN_H
+#define CUDNN_H
 
-#include "rot_math.h"
+#include "rot_math.h"  /* for rot_tensor_t */
 
-#ifdef PLATFORM_MIOPEN
-#include "platform/miopen.h"
-#else
-rot_tensor_t
-matmul_roc(rot_tensor_t result, const rot_tensor_t a, const rot_tensor_t b)
-{
-        return NULL;
-}
-#endif /* PLATFORM_MIOPEN */
+/**
+ * matmul_cuda() - Matmul on NVIDIA hardware.
+ */
+rot_tensor_t matmul_cuda(rot_tensor_t result,
+                         const rot_tensor_t a,
+                         const rot_tensor_t b);
 
-#endif /* PLATFORM_MATH_H */
+#endif /* CUDNN_H */

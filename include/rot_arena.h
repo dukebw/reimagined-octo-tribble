@@ -19,10 +19,9 @@
 #ifndef ROT_ARENA_H
 #define ROT_ARENA_H
 
-#include "rot_platform.h"
-#include <stdbool.h>
-#include <stdint.h>
-#include <stdlib.h>
+#include "rot_platform.h"  /* for rot_backend */
+#include <stdint.h>        /* for uint32_t */
+#include <stdlib.h>        /* for size_t */
 
 typedef struct rot_arena *rot_arena_t;
 
@@ -65,9 +64,9 @@ size_t ROT_arena_min_bytes(void);
 rot_arena_t ROT_arena_new(void *memory, size_t mem_bytes);
 
 /**
- * arena_roc_new() - Initializes a memory arena for the Radeon Open Compute
+ * arena_gpu_new() - Initializes a memory arena for the Radeon Open Compute
  * platform, i.e. AMD GPUs.
- * @arena: `ROT_arena` from which to allocate the ROC memory arena. Memory
+ * @arena: `ROT_arena` from which to allocate the GPU memory arena. Memory
  * on CPU is used to store the metadata for the GPU memory arena.
  * @memory: Pointer to `num_blocks` allocated memory pointers. Each memory
  * pointer must point to a contiguous block of `mem_bytes` of memory.
@@ -84,7 +83,7 @@ rot_arena_t ROT_arena_new(void *memory, size_t mem_bytes);
  * 2. Allocate a `rot_arena` using `ROT_arena_new`, with at least as much
  * memory as computed in step 1.
  *
- * 3. Call `arena_roc_new` with the `rot_arena` from step 2, pointers to the
+ * 3. Call `arena_gpu_new` with the `rot_arena` from step 2, pointers to the
  * allocated GPU memory blocks, and the other arguments above.
  *
  * `arena` will be filled in with the passed arguments and will be returned on
@@ -93,7 +92,7 @@ rot_arena_t ROT_arena_new(void *memory, size_t mem_bytes);
  * NULL is returned on failure.
  */
 struct rot_arena *
-ROT_arena_roc_new(struct rot_arena *arena,
+ROT_arena_gpu_new(struct rot_arena *arena,
                   void **memory,
                   size_t block_bytes,
                   uint32_t num_blocks);

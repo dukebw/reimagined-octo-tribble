@@ -19,8 +19,7 @@
 #ifndef TEST_MIN_UNIT_H
 #define TEST_MIN_UNIT_H
 
-#include <stdbool.h>
-#include <stdint.h>
+#include <stdint.h>  /* for int32_t */
 
 #define MIN_UNIT_TEST_FUNC(name) void name(void)
 typedef MIN_UNIT_TEST_FUNC(min_unit_test_func);
