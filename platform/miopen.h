@@ -16,19 +16,16 @@
  * You should have received a copy of the GNU General Public License along with
  * ROT ML Library. If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef PLATFORM_MATH_H
-#define PLATFORM_MATH_H
+#ifndef MI_OPEN_H
+#define MI_OPEN_H
 
 #include "rot_math.h"
 
-#ifdef PLATFORM_MIOPEN
-#include "platform/miopen.h"
-#else
-rot_tensor_t
-matmul_roc(rot_tensor_t result, const rot_tensor_t a, const rot_tensor_t b)
-{
-        return NULL;
-}
-#endif /* PLATFORM_MIOPEN */
+/**
+ * matmul_roc() - Matrix multiplication using ROCm backend.
+ */
+rot_tensor_t matmul_roc(rot_tensor_t result,
+                        const rot_tensor_t a,
+                        const rot_tensor_t b);
 
-#endif /* PLATFORM_MATH_H */
+#endif /* MI_OPEN_H */

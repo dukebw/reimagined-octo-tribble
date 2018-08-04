@@ -19,8 +19,7 @@
 #ifndef ERROR_STOPIF_H
 #define ERROR_STOPIF_H
 
-#include <stdbool.h>
-#include <stdio.h>
+#include <stdio.h>  /* for FILE */
 
 /**
  * stopif() - Stops the program and prints `msg_format_str` if `assertion` is

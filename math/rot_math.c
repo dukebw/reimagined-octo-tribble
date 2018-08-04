@@ -17,13 +17,11 @@
  * ROT ML Library. If not, see <http://www.gnu.org/licenses/>.
  */
 #include "rot_math.h"
-#include "error/log_error.h"
-#include "platform/math.h"
+#include "error/log_error.h"  /* for LOG_ERROR, LOG_UNSUPPORTED, LOG_NULL */
+#include "platform/cudnn.h"   /* for matmul_cuda */
+#include "platform/math.h"    /* for matmul_roc */
 
-#include "cblas.h"
-#include "hip/hip_runtime_api.h"
-#include "rocblas.h"
-#include <stdlib.h>
+#include "cblas.h"            /* for cblas_sgemm, CblasNoTrans, ... */
 
 struct rot_cpu_tensor {
         /**
@@ -33,7 +31,7 @@ struct rot_cpu_tensor {
         float data[];
 };
 
-struct rot_roc_tensor {
+struct rot_gpu_tensor {
         void *data;
 };
 
@@ -56,7 +54,7 @@ struct rot_tensor {
         uint32_t num_dims;
         union {
                 struct rot_cpu_tensor cpu;
-                struct rot_roc_tensor roc;
+                struct rot_gpu_tensor gpu;
         };
 };
 
@@ -76,7 +74,9 @@ rot_tensor_t ROT_create_tensor(rot_arena_t arena,
                 return NULL;
         }
 
-        if ((backend != ROT_BACKEND_CPU) && (backend != ROT_BACKEND_ROC)) {
+        if ((backend != ROT_BACKEND_CPU) &&
+            (backend != ROT_BACKEND_ROC) &&
+            (backend != ROT_BACKEND_CUDA)) {
                 LOG_UNSUPPORTED();
                 return NULL;
         }
@@ -128,60 +128,12 @@ rot_tensor_t ROT_create_tensor(rot_arena_t arena,
 
         result->num_dims = num_dims;
 
-        if (backend == ROT_BACKEND_ROC) {
-                result->roc.data = ROT_arena_malloc(arena,
+        if ((backend == ROT_BACKEND_ROC) || (backend == ROT_BACKEND_CUDA)) {
+                result->gpu.data = ROT_arena_malloc(arena,
                                                     data_bytes,
-                                                    ROT_BACKEND_ROC);
-                if (result->roc.data == NULL)
+                                                    backend);
+                if (result->gpu.data == NULL)
                         return NULL;
-        }
-
-        return result;
-}
-
-static rot_tensor_t
-matmul_roc(rot_tensor_t result, const rot_tensor_t a, const rot_tensor_t b)
-{
-        const float *a_dev = (const float *)ROT_tensor_get_data(a);
-        const float *b_dev = (const float *)ROT_tensor_get_data(b);
-        float *result_dev = (float *)ROT_tensor_get_data(result);
-        if ((a_dev == NULL) || (b_dev == NULL) || (result_dev == NULL)) {
-                LOG_ERROR("ROC tensor argument has uninitialized memory.");
-                return NULL;
-        }
-
-        rocblas_handle handle;
-        rocblas_status rblas_err = rocblas_create_handle(&handle);
-        if (rblas_err != rocblas_status_success) {
-                LOG_ERROR("ROC error creating handle.");
-                return NULL;
-        }
-
-        const float alpha = 1.0f;
-        const float beta = 0.0f;
-        rblas_err = rocblas_sgemm(handle,
-                                  rocblas_operation_none,
-                                  rocblas_operation_none,
-                                  b->dims[1],
-                                  a->dims[0],
-                                  a->dims[1],
-                                  &alpha,
-                                  b_dev,
-                                  b->dims[1],
-                                  a_dev,
-                                  a->dims[1],
-                                  &beta,
-                                  result_dev,
-                                  b->dims[1]);
-        if (rblas_err != rocblas_status_success) {
-                LOG_ERROR("ROC sgemm error.");
-                return NULL;
-        }
-
-        rblas_err = rocblas_destroy_handle(handle);
-        if (rblas_err != rocblas_status_success) {
-                LOG_ERROR("ROC error destroying handle.");
-                return NULL;
         }
 
         return result;
@@ -240,11 +192,14 @@ rot_tensor_t ROT_matmul(rot_tensor_t result,
                 return NULL;
         }
 
-        if (a->backend == ROT_BACKEND_CPU) {
+        switch (a->backend) {
+        case ROT_BACKEND_CPU:
                 return matmul_cpu(result, a, b);
-        } else if (a->backend == ROT_BACKEND_ROC) {
+        case ROT_BACKEND_CUDA:
+                return matmul_cuda(result, a, b);
+        case ROT_BACKEND_ROC:
                 return matmul_roc(result, a, b);
-        } else {
+        default:
                 LOG_UNSUPPORTED();
                 return NULL;
         }
@@ -252,11 +207,13 @@ rot_tensor_t ROT_matmul(rot_tensor_t result,
 
 float *ROT_tensor_get_data(rot_tensor_t tensor)
 {
-        if (tensor->backend == ROT_BACKEND_CPU) {
+        switch (tensor->backend) {
+        case ROT_BACKEND_CPU:
                 return tensor->cpu.data;
-        } else if (tensor->backend == ROT_BACKEND_ROC) {
-                return (float *)tensor->roc.data;
-        } else {
+        case ROT_BACKEND_CUDA:
+        case ROT_BACKEND_ROC:
+                return (float *)tensor->gpu.data;
+        default:
                 LOG_UNSUPPORTED();
                 return NULL;
         }

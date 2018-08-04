@@ -19,9 +19,10 @@
 #ifndef ROT_MATH_H
 #define ROT_MATH_H
 
-#include "rot_arena.h"
-#include "rot_platform.h"
-#include <stdint.h>
+#include "rot_arena.h"     /* for rot_arena_t */
+#include "rot_platform.h"  /* for rot_backend */
+#include <stddef.h>        /* for size_t */
+#include <stdint.h>        /* for uint32_t */
 
 /**
  * TODO(brendan): Only ROT_matmul belongs in rot_math; put the rest in
