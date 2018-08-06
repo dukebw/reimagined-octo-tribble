@@ -18,7 +18,6 @@
  */
 #include "rot_math.h"
 #include "error/log_error.h"  /* for LOG_ERROR, LOG_UNSUPPORTED, LOG_NULL */
-#include "platform/cudnn.h"   /* for matmul_cuda */
 #include "platform/math.h"    /* for matmul_roc */
 
 #include "cblas.h"            /* for cblas_sgemm, CblasNoTrans, ... */

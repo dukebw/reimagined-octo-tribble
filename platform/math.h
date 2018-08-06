@@ -31,4 +31,14 @@ matmul_roc(rot_tensor_t result, const rot_tensor_t a, const rot_tensor_t b)
 }
 #endif /* PLATFORM_MIOPEN */
 
+#ifdef PLATFORM_CUDNN
+#include "platform/cudnn.h"   /* for matmul_cuda */
+#else
+rot_tensor_t
+matmul_cuda(rot_tensor_t result, const rot_tensor_t a, const rot_tensor_t b)
+{
+        return NULL;
+}
+#endif /* PLATFORM_CUDNN */
+
 #endif /* PLATFORM_MATH_H */
