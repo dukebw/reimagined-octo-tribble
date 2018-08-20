@@ -466,12 +466,28 @@ static MIN_UNIT_TEST_FUNC(test_feedforward_backward)
                 ROT_matmul(out_layer.a, out_layer.w, layer0.a);
                 /* TODO(brendan): find faster sigmoid and benchmark */
                 float *pred_data = ROT_tensor_get_data(out_layer.a);
-                pred_data[0] = 1.0f / (1.0f + exp(-pred_data[0]));
+                pred_data[0] = 1.0f/(1.0f + exp(-pred_data[0]));
 
                 float error = pred_data[0] - datum->y;
-                error *= error;
+                error = 0.5f*error*error;
 
-                /* TODO(brendan): Chain rule! */
+                /**
+                 * v-3 <- w0
+                 * v-2 <- w_out
+                 * v-1 <- y
+                 * v0 <- input
+                 * ----------------------
+                 * v1 <- matmul(v-3, v0)
+                 * v2 <- relu(v1)
+                 * v3 <- matmul(v-2, v2)
+                 * v4 <- sigmoid(v3)
+                 * v5 <- 0.5*(v4 - v-1)^2
+                 * ----------------------
+                 * y1 <- v5
+                 *
+                 * TODO(brendan): Read basic forward-mode example? See Table
+                 * 3.1 of Evaluating Derivatives.
+                 */
         }
 }
 
