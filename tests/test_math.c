@@ -472,21 +472,30 @@ static MIN_UNIT_TEST_FUNC(test_feedforward_backward)
                 error = 0.5f*error*error;
 
                 /**
+                 * v' means dv/w0
+                 *
                  * v-3 <- w0
+                 * v-3' = 1
                  * v-2 <- w_out
+                 * v-2' = 0
                  * v-1 <- y
+                 * v-1' = 0
                  * v0 <- input
+                 * v0' = 0
                  * ----------------------
                  * v1 <- matmul(v-3, v0)
+                 * v1' = matmul(v-3', v0) + matmul(v-3, v0')
                  * v2 <- relu(v1)
+                 * v2' = v1' if v1 > 0, zero otherwise.
                  * v3 <- matmul(v-2, v2)
+                 * v3' = matmul(v-2', v2) + matmul(v-2, v2')
                  * v4 <- sigmoid(v3)
+                 * v4' = sigmoid(v3)*(1 - sigmoid(v3))*v3'
                  * v5 <- 0.5*(v4 - v-1)^2
+                 * v5' = (v4 - v-1)*(v4' - v-1')
                  * ----------------------
                  * y1 <- v5
-                 *
-                 * TODO(brendan): Read basic forward-mode example? See Table
-                 * 3.1 of Evaluating Derivatives.
+                 * y1' = v5'
                  */
         }
 }
