@@ -38,3 +38,32 @@ rot_tensor_t ROT_relu(rot_tensor_t tensor)
 
         return tensor;
 }
+
+/**
+ * TODO(brendan): Replace this forward-propagated derivative with reverse mode.
+ */
+rot_tensor_t ROT_relu_grad(rot_tensor_t out_grad,
+                           rot_tensor_t in_grad,
+                           rot_tensor_t activations)
+{
+        /* TODO(brendan): What if activations are zero-length? */
+        size_t flattened_size = ROT_tensor_get_size(activations);
+        float *act_data = ROT_tensor_get_data(activations);
+        /* TODO(brendan): GPU implementation. */
+        bool is_zero = true;
+        for (uint32_t i = 0;
+             i < flattened_size;
+             ++i) {
+                if (act_data[i] != 0.0f) {
+                        is_zero = false;
+                        break;
+                }
+        }
+
+        /**
+         * TODO(brendan): copy in_grad to out_grad if is_zero, set out_grad to
+         * zero otherwise.
+         */
+
+        return out_grad;
+}
