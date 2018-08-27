@@ -515,11 +515,11 @@ static MIN_UNIT_TEST_FUNC(test_feedforward_backward)
                  * v4' += v5'*(v4 - v-1)
                  * v-1' += v5'*(v-1 - v4)
                  * v3' += v4'*sigmoid(v3)*(1 - sigmoid(v3))
-                 * v2' += v3'*matmul(v-2, v2')
-                 * v-2' += v3'*matmul(v-2', v2)
+                 * v2' += v3'*v-2^T
+                 * v-2' += v3'*v2^T
                  * v1' += v2'*(1 if v1 > 0, zero otherwise)
-                 * v0' += matmul(v-3, v0')
-                 * v-3' += matmul(v-3', v0)
+                 * v0' += v1'*v-3^T
+                 * v-3' += v1'*v0^T
                  * ----------------------
                  * input' <- v0'
                  * label' <- v-1'
