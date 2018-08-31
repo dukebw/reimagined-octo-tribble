@@ -46,6 +46,11 @@ rot_tensor_t ROT_relu_grad(rot_tensor_t out_grad,
                            rot_tensor_t in_grad,
                            rot_tensor_t activations)
 {
+        if ((out_grad == NULL) || (in_grad == NULL) || (activations == NULL)) {
+                LOG_NULL();
+                return NULL;
+        }
+
         /* TODO(brendan): What if activations are zero-length? */
         size_t flattened_size = ROT_tensor_get_size(activations);
         float *act_data = ROT_tensor_get_data(activations);
@@ -60,10 +65,21 @@ rot_tensor_t ROT_relu_grad(rot_tensor_t out_grad,
                 }
         }
 
-        /**
-         * TODO(brendan): copy in_grad to out_grad if is_zero, set out_grad to
-         * zero otherwise.
-         */
+        if (is_zero) {
+                if (ROT_set_dims(out_grad,
+                                 in_grad->num_dims,
+                                 in_grad->dims) == NULL) {
+                        LOG_ERROR("Set dims failed.");
+                        return NULL;
+                }
+
+                /**
+                 * TODO(brendan): presumably the dimensions should be the same
+                 * as the activations dimensions?
+                 *
+                 * Check reverse mode in autograd.
+                 */
+        }
 
         return out_grad;
 }
