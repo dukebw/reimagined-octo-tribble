@@ -15,7 +15,8 @@ if hip_hcc_dep.found()
 endif
 
 lib_src = ['math/rot_math.c',
-           'memory/rot_arena.c']
+           'memory/rot_arena.c',
+           'nn/rot_nn.c']
 
 if hip_hcc_dep.found()
         lib_src += ['platform/miopen.c']
@@ -27,10 +28,13 @@ if cublas_dep.found()
         add_global_arguments('-DPLATFORM_CUDNN=1', language : 'c')
 endif
 
+incdir = include_directories('include')
+
 lib = static_library('rot_ml',
                      sources : lib_src,
                      c_args : c_extra_args,
                      dependencies : [openblas_dep],
+                     include_directories : incdir,
                      link_args : link_extra_args)
 
 test_math_src = ['tests/test_math.c',
@@ -49,6 +53,7 @@ endif
 test_math = executable('test_math',
                        sources : test_math_src,
                        c_args : c_extra_args,
+                       include_directories : incdir,
                        link_args : link_extra_args,
                        link_with : lib,
                        dependencies : [cublas_dep,

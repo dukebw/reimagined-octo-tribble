@@ -20,6 +20,7 @@
 #include "tests/test_cudnn.h" /* for test_matmul_small_cudnn */
 #include "tests/min_unit.h"   /* for MIN_UNIT_ASSERT, min_unit_run_test */
 #include "rot_math.h"         /* for ROT_matmul, ROT_create_tensor, ... */
+#include "rot_nn.h"           /* for ROT_relu */
 #include "rot_platform.h"     /* for ROT_BACKEND_CPU */
 
 #include "gsl/gsl_rng.h"      /* for gsl_rng, gsl_rng_alloc, gsl_rng_free */
@@ -33,6 +34,36 @@
 #include <stdlib.h>           /* for size_t, NULL, free, malloc, rand, srand */
 #include <string.h>           /* for memcpy */
 #include <sys/time.h>         /* for timeval, gettimeofday */
+
+/**
+ * array_size() - get the number of elements in array @arr.
+ * @arr: array to be sized
+ */
+template<typename T, size_t N>
+constexpr size_t
+array_size(T (&)[N])
+{
+        return N;
+}
+
+struct beta_datum {
+        double x;
+        double alpha;
+        double beta;
+        double y;
+};
+template<size_t N>
+struct sim_beta {
+        struct beta_datum data[N];
+};
+
+/**
+ * struct linear_layer - Contains weights and activations for a linear layer.
+ */
+struct linear_layer {
+        rot_tensor_t w;
+        rot_tensor_t a;
+};
 
 /**
  * get_th_tensor_data() - Get float pointer to data in th_tensor.
@@ -144,21 +175,22 @@ setup_test(void)
 
 /**
  * init_data_uniform() - Initializes `data`, assumed to represent a matrix,
- * from a uniform distribution with range [-1, 1].
+ * from a uniform distribution with range [-a, a].
  * @data: The buffer to be initialized.
  * @rng: GSL RNG state to used to draw the random samples.
  * @dims: The two dimensions of the `data` matrix.
+ * @a: Half-width of the uniform distribution.
  *
  * Returns the size in bytes of the entire `data` buffer initialized.
  */
 static size_t
-init_data_uniform(float *data, gsl_rng *rng, const size_t *dims)
+init_data_uniform(float *data, gsl_rng *rng, const size_t *dims, const float a)
 {
         size_t num_elems = dims[0]*dims[1];
         for (uint32_t i = 0;
              i < num_elems;
              ++i) {
-                data[i] = gsl_ran_flat(rng, -1, 1);
+                data[i] = gsl_ran_flat(rng, -a, a);
         }
 
         return num_elems;
@@ -183,8 +215,8 @@ void setup_matmul_test_state(struct matmul_test_state *state,
 
         gsl_rng *rng = get_gsl_rng();
 
-        size_t a_num_elems = init_data_uniform(state->a.data, rng, mk_dims);
-        size_t b_num_elems = init_data_uniform(state->b.data, rng, kn_dims);
+        size_t a_num_elems = init_data_uniform(state->a.data, rng, mk_dims, 1);
+        size_t b_num_elems = init_data_uniform(state->b.data, rng, kn_dims, 1);
         size_t c_num_elems = dims->m*dims->n;
 
         size_t c_bytes = c_num_elems*sizeof(float);
@@ -346,6 +378,161 @@ static MIN_UNIT_TEST_FUNC(test_matmul_small_perf)
         free(memory);
 }
 
+template<size_t N>
+static void
+init_layer(struct linear_layer *layer,
+           rot_arena_t arena,
+           gsl_rng *rng,
+           const size_t (&dims)[N])
+{
+        layer->w = ROT_create_tensor(arena, N, dims, ROT_BACKEND_CPU);
+        assert(layer->w != NULL);
+
+        float *data = ROT_tensor_get_data(layer->w);
+        float stddev = 1.0f/sqrt(dims[1]);
+        init_data_uniform(data, rng, dims, stddev);
+
+        const size_t a_dims[] = {dims[0], 1};
+        layer->a = ROT_create_tensor(arena,
+                                     array_size(a_dims),
+                                     a_dims,
+                                     ROT_BACKEND_CPU);
+        assert(layer->a != NULL);
+}
+
+/**
+ * test_feedforward_backward() - A test to run training for simulated data,
+ * using SGD + momentum and a feedforward neural network.
+ *
+ * This is meant to be a toy example, to ensure that backprop is working for a
+ * simple feedforward neural network.
+ *
+ * Inputs x, alpha and beta are sampled from a uniform distribution, and the
+ * neural network must output the pdf f(x; alpha, beta) of a Beta distribution
+ * at x, parametrized by alpha and beta.
+ */
+static MIN_UNIT_TEST_FUNC(test_feedforward_backward)
+{
+        constexpr size_t memory_size = 1024;
+        uint8_t memory[memory_size];
+        rot_arena_t arena = ROT_arena_new(memory, memory_size);
+
+        constexpr uint32_t num_train = 1024;
+        struct sim_beta<num_train> train_dataset;
+
+        gsl_rng *rng = get_gsl_rng();
+
+        for (uint32_t i = 0;
+             i < num_train;
+             ++i) {
+                struct beta_datum *d = train_dataset.data + i;
+                d->x = gsl_ran_flat(rng, -1, 1);
+                d->alpha = gsl_ran_flat(rng, 0, 5);
+                d->beta = gsl_ran_flat(rng, 0, 5);
+                d->y = gsl_ran_beta_pdf(d->x, d->alpha, d->beta);
+        }
+
+        /* NOTE(brendan): The 3 is for the 3 inputs: (x, a, b). */
+        constexpr size_t input_dims[] = {3, 1};
+        rot_tensor_t input_tensor = ROT_create_tensor(arena,
+                                                      array_size(input_dims),
+                                                      input_dims,
+                                                      ROT_BACKEND_CPU);
+        assert(input_tensor != NULL);
+
+        constexpr uint32_t num_hidden_units = 16;
+
+        constexpr size_t layer0_dims[] = {num_hidden_units, input_dims[0]};
+        struct linear_layer layer0;
+        init_layer(&layer0, arena, rng, layer0_dims);
+
+        struct linear_layer out_layer;
+        constexpr size_t output_layer_dims[] = {1, num_hidden_units};
+        init_layer(&out_layer, arena, rng, output_layer_dims);
+
+        for (uint32_t iter_i = 0;
+             iter_i < num_train;
+             ++iter_i) {
+                float *input_data = ROT_tensor_get_data(input_tensor);
+                struct beta_datum *datum = train_dataset.data + iter_i;
+                input_data[0] = datum->x;
+                input_data[1] = datum->alpha;
+                input_data[2] = datum->beta;
+
+                ROT_matmul(layer0.a, layer0.w, input_tensor);
+
+                ROT_relu(layer0.a);
+
+                ROT_matmul(out_layer.a, out_layer.w, layer0.a);
+                /* TODO(brendan): find faster sigmoid and benchmark */
+                float *pred_data = ROT_tensor_get_data(out_layer.a);
+                pred_data[0] = 1.0f/(1.0f + exp(-pred_data[0]));
+
+                float error = pred_data[0] - datum->y;
+                error = 0.5f*error*error;
+
+                /**
+                 * Forward sweep
+                 *
+                 * v-3 <- w0
+                 * v-2 <- w_out
+                 * v-1 <- label
+                 * v0 <- input
+                 * ----------------------
+                 * v1 <- matmul(v-3, v0)
+                 * v2 <- relu(v1)
+                 * v3 <- matmul(v-2, v2)
+                 * v4 <- sigmoid(v3)
+                 * v5 <- 0.5*(v4 - v-1)^2
+                 * ----------------------
+                 * y1 <- v5
+                 *
+                 *
+                 * Reverse sweep
+                 *
+                 * Forward mode. v' means dv/w0
+                 *
+                 * v-3' = 1
+                 * v-2' = 0
+                 * v-1' = 0
+                 * v0' = 0
+                 * ----------------------
+                 * v1' = matmul(v-3', v0) + matmul(v-3, v0')
+                 * v2' = v1' if v1 > 0, zero otherwise.
+                 * v3' = matmul(v-2', v2) + matmul(v-2, v2')
+                 * v4' = sigmoid(v3)*(1 - sigmoid(v3))*v3'
+                 * v5' = (v4 - v-1)*(v4' - v-1')
+                 * ----------------------
+                 * y1' = v5'
+                 *
+                 *
+                 * Reverse mode. v' means dy/dv
+                 *
+                 * vi' <- 0 for all i in -3...5
+                 * (y1' <- 1)
+                 * v5' <- y1'
+                 * ----------------------
+                 * v4' += v5'*(v4 - v-1)
+                 * v-1' += v5'*(v-1 - v4)
+                 * v3' += v4'*sigmoid(v3)*(1 - sigmoid(v3))
+                 * v2' += v3'*v-2^T
+                 * v-2' += v3'*v2^T
+                 * v1' += v2'*(1 if v1 > 0, zero otherwise)
+                 * v0' += v1'*v-3^T
+                 * v-3' += v1'*v0^T
+                 * ----------------------
+                 * input' <- v0'
+                 * label' <- v-1'
+                 * w_out' <- v-2'
+                 * w0' <- v-3'
+                 *
+                 *
+                 * TODO(brendan): Check that forward and reverse mode give the
+                 * same answer.
+                 */
+        }
+}
+
 /**
  * run_test() - Sets up, runs and tears down the unit test function `test`.
  */
@@ -366,6 +553,7 @@ int main(void)
         run_test(test_matmul_small_miopen);
 #endif /* PLATFORM_MIOPEN */
         run_test(test_matmul_small_perf);
+        run_test(test_feedforward_backward);
 
         printf("All tests passed!\n");
 

@@ -18,7 +18,6 @@
  */
 #include "rot_math.h"
 #include "error/log_error.h"  /* for LOG_ERROR, LOG_UNSUPPORTED, LOG_NULL */
-#include "platform/cudnn.h"   /* for matmul_cuda */
 #include "platform/math.h"    /* for matmul_roc */
 
 #include "cblas.h"            /* for cblas_sgemm, CblasNoTrans, ... */
@@ -57,6 +56,30 @@ struct rot_tensor {
                 struct rot_gpu_tensor gpu;
         };
 };
+
+static void
+set_dims_unchecked(struct rot_tensor *tensor,
+                   uint32_t num_dims,
+                   const size_t *dims)
+{
+        for (uint32_t dim = 0;
+             dim < num_dims;
+             ++dim) {
+                tensor->dims[dim] = dims[dim];
+        }
+
+        tensor->num_dims = num_dims;
+}
+
+rot_tensor_t ROT_set_dims(struct rot_tensor *tensor,
+                          uint32_t num_dims,
+                          const size_t *dims)
+{
+        if ((tensor == NULL) || ((num_dims > 0) && (dims == NULL)))
+                return NULL;
+
+        set_dims_unchecked(tensor, num_dims, dims);
+}
 
 rot_tensor_t ROT_create_tensor(rot_arena_t arena,
                                uint32_t num_dims,
@@ -120,13 +143,7 @@ rot_tensor_t ROT_create_tensor(rot_arena_t arena,
         result->dims = (size_t *)((char *)result +
                                   (required_bytes - dim_sizes_bytes));
 
-        for (uint32_t dim = 0;
-             dim < num_dims;
-             ++dim) {
-                result->dims[dim] = dims[dim];
-        }
-
-        result->num_dims = num_dims;
+        ROT_set_dims(result, num_dims, dims);
 
         if ((backend == ROT_BACKEND_ROC) || (backend == ROT_BACKEND_CUDA)) {
                 result->gpu.data = ROT_arena_malloc(arena,

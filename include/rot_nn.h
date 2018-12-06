@@ -16,29 +16,17 @@
  * You should have received a copy of the GNU General Public License along with
  * ROT ML Library. If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef PLATFORM_MATH_H
-#define PLATFORM_MATH_H
+#ifndef ROT_NN_H
+#define ROT_NN_H
 
 #include "rot_math.h"
 
-#ifdef PLATFORM_MIOPEN
-#include "platform/miopen.h"
-#else
-rot_tensor_t
-matmul_roc(rot_tensor_t result, const rot_tensor_t a, const rot_tensor_t b)
-{
-        return NULL;
-}
-#endif /* PLATFORM_MIOPEN */
+/**
+ * ROT_relu() - ReLU on tensor.
+ * @tensor: Tensor to ReLU.
+ *
+ * Returns NULL if tensor is NULL, otherwise returns tensor.
+ */
+rot_tensor_t ROT_relu(rot_tensor_t tensor);
 
-#ifdef PLATFORM_CUDNN
-#include "platform/cudnn.h"   /* for matmul_cuda */
-#else
-rot_tensor_t
-matmul_cuda(rot_tensor_t result, const rot_tensor_t a, const rot_tensor_t b)
-{
-        return NULL;
-}
-#endif /* PLATFORM_CUDNN */
-
-#endif /* PLATFORM_MATH_H */
+#endif /* ROT_NN_H */

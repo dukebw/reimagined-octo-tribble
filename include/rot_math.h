@@ -24,6 +24,10 @@
 #include <stddef.h>        /* for size_t */
 #include <stdint.h>        /* for uint32_t */
 
+/**
+ * TODO(brendan): Only ROT_matmul belongs in rot_math; put the rest in
+ * rot_types.
+ */
 typedef struct rot_tensor *rot_tensor_t;
 
 /**
@@ -88,5 +92,15 @@ const size_t *ROT_tensor_get_dims(rot_tensor_t tensor);
  * @tensor: A tensor.
  */
 size_t ROT_tensor_get_size(rot_tensor_t tensor);
+
+/**
+ * ROT_set_dims() - Set tensor dimensions.
+ * @tensor: A tensor.
+ * @num_dims: Number of dimensions of the tensor to allocate.
+ * @dims: Size of each dimension of the allocated tensor.
+ */
+rot_tensor_t ROT_set_dims(struct rot_tensor *tensor,
+                          uint32_t num_dims,
+                          const size_t *dims);
 
 #endif /* ROT_MATH_H */
